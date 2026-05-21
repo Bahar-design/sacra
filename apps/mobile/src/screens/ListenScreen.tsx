@@ -128,13 +128,9 @@ export default function ListenScreen({ navigation }: any) {
       setState("recording");
       startPulse();
       startWave();
-      try {
-        await connectWS();
-      } catch {
-        /* WS optional — HTTP fallback used if unavailable */
-      }
+      // Removed WebSocket — use reliable HTTP POST only
     } catch {
-      setErrorMsg("Failed to start recording.");
+      setErrorMsg("Failed to start recording. Please try again.");
       setState("error");
     }
   };
@@ -149,20 +145,14 @@ export default function ListenScreen({ navigation }: any) {
       const uri = recRef.current.getURI();
       recRef.current = null;
       if (!uri) throw new Error("No audio recorded");
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        // Tell WebSocket to finalize — result comes through ws.onmessage above
-        wsRef.current.send(JSON.stringify({ type: "stop" }));
-      } else {
-        // HTTP fallback when WebSocket is not available
-        const res = await PrayerAPI.listen(uri);
-        setTranscript(res.data.transcription);
-        setResults(res.data.matches || []);
-        setState("results");
-        trackListen({ matched: res.data.matches?.length > 0 });
-      }
+      const res = await PrayerAPI.listen(uri);
+      setTranscript(res.data.transcription);
+      setResults(res.data.matches || []);
+      setState("results");
     } catch (err: any) {
       setErrorMsg(
-        err?.response?.data?.error || "Something went wrong. Try again.",
+        err?.response?.data?.error ||
+          "Could not process audio. Make sure the API is running and try again.",
       );
       setState("error");
     }

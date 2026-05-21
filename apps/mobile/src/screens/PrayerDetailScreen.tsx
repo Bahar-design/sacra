@@ -125,7 +125,9 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
                 style={s.simCard}
                 onPress={() => navigation.push("PrayerDetail", { prayer: p })}
               >
-                <Text style={s.simRel}>{p.religion_id}</Text>
+                <Text style={s.simRel}>
+                  {p.religion_icon} {p.religion_name}
+                </Text>
                 <Text style={s.simTitle}>{p.title}</Text>
                 <Text style={s.simBody} numberOfLines={2}>
                   {p.body}

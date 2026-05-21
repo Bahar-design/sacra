@@ -33,16 +33,42 @@ export default function HomeScreen({ navigation }: any) {
   const [religions, setReligions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeRel, setActiveRel] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    Promise.all([PrayerAPI.getReligions(), PrayerAPI.list({ limit: 20 })])
+    Promise.all([PrayerAPI.getReligions(), PrayerAPI.list({ limit: 50 })])
       .then(([relRes, prayRes]) => {
         setReligions(relRes.data.data || []);
-        setPrayers(prayRes.data.data || []);
+        const data = prayRes.data.data || [];
+        setPrayers(data);
+        setHasMore(data.length === 50);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await PrayerAPI.list({
+        religion_id: activeRel || undefined,
+        limit: 50,
+        page: nextPage,
+      });
+      const data = res.data.data || [];
+      setPrayers((prev) => [...prev, ...data]);
+      setPage(nextPage);
+      setHasMore(data.length === 50);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const filterByReligion = async (religionId: string, name: string) => {
     const next = activeRel === religionId ? "" : religionId;
@@ -107,6 +133,16 @@ export default function HomeScreen({ navigation }: any) {
         <FlatList
           data={prayers}
           keyExtractor={(i) => i.id}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator
+                color={theme.colors.gold}
+                style={{ margin: 20 }}
+              />
+            ) : null
+          }
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => (
             <TouchableOpacity

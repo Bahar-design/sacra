@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as WebBrowser from "expo-web-browser";
+
+// This is required for OAuth to work — it completes the auth
+// session when the browser redirects back to the app
+WebBrowser.maybeCompleteAuthSession();
 
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
@@ -13,22 +18,52 @@ export const supabase = createClient(
     },
   },
 );
-export const signUp = (e: string, p: string) =>
-  supabase.auth.signUp({ email: e, password: p });
-export const signIn = (e: string, p: string) =>
-  supabase.auth.signInWithPassword({ email: e, password: p });
+
+//Email Auth
+
+export const signUp = (email: string, password: string) =>
+  supabase.auth.signUp({ email, password });
+
+export const signIn = (email: string, password: string) =>
+  supabase.auth.signInWithPassword({ email, password });
+
 export const signOut = () => supabase.auth.signOut();
+
 export const getUser = () => supabase.auth.getUser();
-export const savePrayer = (uid: string, pid: string) =>
-  supabase.from("saved_prayers").insert({ user_id: uid, prayer_id: pid });
-export const unsavePrayer = (uid: string, pid: string) =>
+
+export const getSession = () => supabase.auth.getSession();
+
+//Prayer Collections
+
+export const savePrayer = (userId: string, prayerId: string) =>
+  supabase
+    .from("saved_prayers")
+    .insert({ user_id: userId, prayer_id: prayerId });
+
+export const unsavePrayer = (userId: string, prayerId: string) =>
   supabase
     .from("saved_prayers")
     .delete()
-    .eq("user_id", uid)
-    .eq("prayer_id", pid);
-export const getSaved = (uid: string) =>
+    .eq("user_id", userId)
+    .eq("prayer_id", prayerId);
+
+export const getSaved = (userId: string) =>
   supabase
     .from("saved_prayers")
     .select("prayer_id, prayers(*)")
-    .eq("user_id", uid);
+    .eq("user_id", userId);
+
+//Listen History
+
+export const logListenHistory = (
+  userId: string,
+  prayerId: string,
+  transcription: string,
+  similarity: number,
+) =>
+  supabase.from("listen_history").insert({
+    user_id: userId,
+    prayer_id: prayerId,
+    transcription,
+    similarity,
+  });

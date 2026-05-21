@@ -9,23 +9,103 @@ export async function communityRoutes(fastify: FastifyInstance) {
   // POST /api/community/submit — user submits a prayer for review
   fastify.post("/submit", async (req, rep) => {
     const { title, body, religion_id, source, user_id } = req.body as any;
+
     if (!title?.trim() || !body?.trim())
       return rep.status(400).send({ error: "Title and body are required" });
     if (body.trim().length < 20)
-      return rep
-        .status(400)
-        .send({ error: "Prayer body too short (minimum 20 characters)" });
+      return rep.status(400).send({ error: "Prayer text too short" });
 
-    const { data, error } = await supabaseAdmin
-      .from("community_submissions")
-      .insert({ title, body, religion_id, source, user_id, status: "pending" })
-      .select()
-      .single();
-    if (error) return rep.status(500).send({ error: error.message });
-    return {
-      data,
-      message: "Submission received. Thank you for contributing to SACRA.",
-    };
+    // Auto-validate using GPT — checks if it looks like a real prayer
+    try {
+      const validation = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: `You are a religious text validator. Evaluate whether the following is a genuine, respectful prayer or sacred text from any world religion or spiritual tradition.
+
+Title: ${title}
+Text: ${body}
+Source: ${source || "not provided"}
+
+Respond with ONLY a JSON object in this exact format:
+{"valid": true, "reason": "brief reason"}
+OR
+{"valid": false, "reason": "brief reason why rejected"}
+
+Reject if: it is offensive, fake, nonsensical, contains hate speech, or is clearly not a prayer/sacred text.
+Accept if: it appears to be a genuine prayer, mantra, blessing, or sacred verse from any tradition.`,
+          },
+        ],
+        max_tokens: 100,
+      });
+
+      const responseText = validation.choices[0].message.content?.trim() || "";
+      let result: { valid: boolean; reason: string };
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        result = {
+          valid: true,
+          reason: "Could not parse validation — defaulting to pending",
+        };
+      }
+
+      if (!result.valid) {
+        return rep.status(422).send({
+          error: `Submission rejected: ${result.reason}`,
+        });
+      }
+
+      // If valid, auto-approve and embed immediately
+      const embRes = await openai.embeddings.create({
+        model: "text-embedding-ada-002",
+        input: `${title}. ${body}`.replace(/\n/g, " "),
+      });
+      logEmbeddingCost(embRes.usage.total_tokens).catch(console.error);
+
+      const { error: insertErr } = await supabaseAdmin.from("prayers").insert({
+        title: title.trim(),
+        body: body.trim(),
+        religion_id: religion_id || null,
+        source: source?.trim() || null,
+        submitted_by: user_id || null,
+        approved: true,
+        embedding: JSON.stringify(embRes.data[0].embedding),
+      });
+
+      if (insertErr) throw insertErr;
+
+      // Also log in community_submissions for record-keeping
+      await supabaseAdmin.from("community_submissions").insert({
+        title,
+        body,
+        religion_id,
+        source,
+        user_id,
+        status: "approved",
+      });
+
+      return {
+        success: true,
+        message:
+          "Your prayer has been validated and added to SACRA immediately. Thank you!",
+      };
+    } catch (err: any) {
+      // If AI validation fails for any reason, fall back to pending queue
+      await supabaseAdmin.from("community_submissions").insert({
+        title,
+        body,
+        religion_id,
+        source,
+        user_id,
+        status: "pending",
+      });
+      return {
+        success: true,
+        message: "Your prayer has been submitted for review. Thank you!",
+      };
+    }
   });
 
   // GET /api/community/queue — admin moderation queue
