@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "SACRA",
-    "slug": "sacra",
+    "name": "mobile",
+    "slug": "mobile",
     "scheme": "sacra",
     "version": "1.0.0",
     "orientation": "portrait",
