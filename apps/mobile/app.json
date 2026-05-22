@@ -18,10 +18,11 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "##0d0a08"
+        "backgroundColor": "#ffffff"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.babdi.mobile",
+      "buildGradleExtraContent": "configurations.all { resolutionStrategy { force 'com.google.android.material:material:1.12.0' } }",
       "intentFilters": [
         {
           "action": "VIEW",
