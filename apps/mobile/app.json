@@ -7,11 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -22,7 +17,6 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.babdi.mobile",
-      "buildGradleExtraContent": "configurations.all { resolutionStrategy { force 'com.google.android.material:material:1.12.0' } }",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -32,7 +26,10 @@
               "scheme": "sacra"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -44,7 +41,8 @@
       "expo-secure-store",
       "expo-localization",
       "expo-sharing",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
