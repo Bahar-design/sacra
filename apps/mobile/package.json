@@ -54,5 +54,8 @@
       }
     }
   },
+  "overrides": {
+    "expo-modules-core": "~56.0.13"
+  },
   "private": true
 }
