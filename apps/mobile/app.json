@@ -42,7 +42,7 @@
       "expo-web-browser",
       "expo-status-bar",
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Allow SACRA to access your microphone for prayer recognition."
         }

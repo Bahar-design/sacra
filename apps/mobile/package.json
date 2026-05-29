@@ -21,7 +21,7 @@
     "expo": "~56.0.3",
     "expo-application": "~56.0.3",
     "expo-auth-session": "~56.0.11",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~56.0.11",
     "expo-constants": "~56.0.14",
     "expo-crypto": "~56.0.3",
     "expo-device": "~56.0.4",
@@ -49,13 +49,10 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
-          "expo-av"
+          "expo-audio"
         ]
       }
     }
-  },
-  "overrides": {
-    "expo-modules-core": "~56.0.13"
   },
   "private": true
 }

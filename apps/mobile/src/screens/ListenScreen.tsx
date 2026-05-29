@@ -8,7 +8,12 @@ import {
   ActivityIndicator,
   Animated,
 } from "react-native";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  AudioQuality,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { PrayerAPI, WS_BASE } from "../lib/api";
@@ -23,7 +28,14 @@ export default function ListenScreen({ navigation }: any) {
   const [transcript, setTranscript] = useState("");
   const [streamText, setStreamText] = useState(""); // live partial text
   const [errorMsg, setErrorMsg] = useState("");
-  const recRef = useRef<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder({
+    extension: ".m4a",
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    android: { outputFormat: "mpeg4", audioEncoder: "aac" },
+    ios: { audioQuality: AudioQuality.HIGH },
+  });
   const wsRef = useRef<WebSocket | null>(null);
   const pulse = useRef(new Animated.Value(1)).current;
   const waves = useRef(
@@ -108,27 +120,23 @@ export default function ListenScreen({ navigation }: any) {
 
   const startRecording = async () => {
     try {
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
         setErrorMsg("Microphone access required.");
         setState("error");
         return;
       }
-      await Audio.setAudioModeAsync({
+      await setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      );
-      recRef.current = recording;
+      await recorder.record();
       setResults([]);
       setTranscript("");
       setStreamText("");
       setState("recording");
       startPulse();
       startWave();
-      // Removed WebSocket — use reliable HTTP POST only
     } catch {
       setErrorMsg("Failed to start recording. Please try again.");
       setState("error");
@@ -136,14 +144,13 @@ export default function ListenScreen({ navigation }: any) {
   };
 
   const stopAndProcess = async () => {
-    if (!recRef.current) return;
+    if (state !== "recording") return;
     stopPulse();
     stopWave();
     setState("processing");
     try {
-      await recRef.current.stopAndUnloadAsync();
-      const uri = recRef.current.getURI();
-      recRef.current = null;
+      await recorder.stop();
+      const uri = recorder.uri;
       if (!uri) throw new Error("No audio recorded");
       const res = await PrayerAPI.listen(uri);
       setTranscript(res.data.transcription);
