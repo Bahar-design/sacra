@@ -1,19 +1,20 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "SACRA",
     "slug": "mobile",
     "scheme": "sacra",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.babdi.mobile"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0d0a08"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.babdi.mobile",
@@ -26,10 +27,7 @@
               "scheme": "sacra"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
@@ -42,7 +40,13 @@
       "expo-localization",
       "expo-sharing",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow SACRA to access your microphone for prayer recognition."
+        }
+      ]
     ],
     "extra": {
       "eas": {
