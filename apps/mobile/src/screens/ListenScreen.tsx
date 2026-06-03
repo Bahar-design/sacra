@@ -119,7 +119,8 @@ export default function ListenScreen({ navigation }: any) {
     stopWave();
     setState("processing");
     try {
-      recorder.stop();
+      // eslint-disable-next-line @typescript-eslint/await-thenable
+      await recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error("No audio recorded");
       const res = await PrayerAPI.listen(uri);
@@ -133,13 +134,18 @@ export default function ListenScreen({ navigation }: any) {
     } catch (err: any) {
       const serverMsg =
         err?.response?.data?.error || err?.response?.data?.message;
-      const clientMsg = serverMsg
-        ? serverMsg
-        : err?.code === "ECONNABORTED"
-          ? "Processing timed out. Try a shorter recording (under 30 seconds)."
-          : err?.message === "Network Error"
-            ? "Cannot reach server. Check your connection and try again."
-            : "Could not process audio. Make sure the API is running and try again.";
+      let clientMsg: string;
+      if (serverMsg) {
+        clientMsg = serverMsg;
+      } else if (err?.code === "ECONNABORTED") {
+        clientMsg = "Processing timed out. Try a shorter recording.";
+      } else if (err?.message === "Network Error") {
+        clientMsg = "Cannot reach server. Check your connection.";
+      } else if (err?.message) {
+        clientMsg = err.message;
+      } else {
+        clientMsg = "Could not process audio. Please try again.";
+      }
       setErrorMsg(clientMsg);
       setState("error");
     }
