@@ -101,6 +101,7 @@ export default function ListenScreen({ navigation }: any) {
         allowsRecording: true,
         playsInSilentMode: true,
       });
+      await recorder.prepareToRecordAsync();
       recorder.record();
       setResults([]);
       setTranscript("");
@@ -119,7 +120,6 @@ export default function ListenScreen({ navigation }: any) {
     stopWave();
     setState("processing");
     try {
-      // eslint-disable-next-line @typescript-eslint/await-thenable
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error("No audio recorded");
