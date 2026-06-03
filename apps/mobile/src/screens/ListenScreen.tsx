@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,9 @@ import {
 } from "expo-audio";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
-import { PrayerAPI, WS_BASE } from "../lib/api";
+import { PrayerAPI } from "../lib/api";
 import { trackListen } from "../lib/analytics";
+import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
 const BARS = 24;
@@ -26,7 +27,6 @@ export default function ListenScreen({ navigation }: any) {
   const [state, setState] = useState<State>("idle");
   const [results, setResults] = useState<any[]>([]);
   const [transcript, setTranscript] = useState("");
-  const [streamText, setStreamText] = useState(""); // live partial text
   const [errorMsg, setErrorMsg] = useState("");
   const recorder = useAudioRecorder({
     extension: ".m4a",
@@ -35,8 +35,8 @@ export default function ListenScreen({ navigation }: any) {
     bitRate: 128000,
     android: { outputFormat: "mpeg4", audioEncoder: "aac" },
     ios: { audioQuality: AudioQuality.HIGH },
-  });
-  const wsRef = useRef<WebSocket | null>(null);
+    web: {},
+  } as RecordingOptions);
   const pulse = useRef(new Animated.Value(1)).current;
   const waves = useRef(
     Array.from({ length: BARS }, () => new Animated.Value(0.2)),
@@ -89,35 +89,6 @@ export default function ListenScreen({ navigation }: any) {
     pulse.setValue(1);
   };
 
-  const connectWS = () =>
-    new Promise<WebSocket>((resolve, reject) => {
-      const ws = new WebSocket(`${WS_BASE}/api/listen/stream`);
-      ws.onopen = () => resolve(ws);
-      ws.onerror = reject;
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "partial") setStreamText(msg.text);
-          if (msg.type === "processing") setState("processing");
-          if (msg.type === "result") {
-            setTranscript(msg.transcription);
-            setResults(msg.matches || []);
-            setStreamText("");
-            setState("results");
-            trackListen({
-              matched: msg.matches?.length > 0,
-              similarity: msg.top_match?.similarity,
-            });
-          }
-          if (msg.type === "error") {
-            setErrorMsg(msg.message);
-            setState("error");
-          }
-        } catch {}
-      };
-      wsRef.current = ws;
-    });
-
   const startRecording = async () => {
     try {
       const { granted } = await requestRecordingPermissionsAsync();
@@ -127,13 +98,12 @@ export default function ListenScreen({ navigation }: any) {
         return;
       }
       await setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
-      await recorder.record();
+      recorder.record();
       setResults([]);
       setTranscript("");
-      setStreamText("");
       setState("recording");
       startPulse();
       startWave();
@@ -149,18 +119,28 @@ export default function ListenScreen({ navigation }: any) {
     stopWave();
     setState("processing");
     try {
-      await recorder.stop();
+      recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error("No audio recorded");
       const res = await PrayerAPI.listen(uri);
       setTranscript(res.data.transcription);
       setResults(res.data.matches || []);
       setState("results");
+      trackListen({
+        matched: (res.data.matches?.length ?? 0) > 0,
+        similarity: res.data.top_match?.similarity,
+      });
     } catch (err: any) {
-      setErrorMsg(
-        err?.response?.data?.error ||
-          "Could not process audio. Make sure the API is running and try again.",
-      );
+      const serverMsg =
+        err?.response?.data?.error || err?.response?.data?.message;
+      const clientMsg = serverMsg
+        ? serverMsg
+        : err?.code === "ECONNABORTED"
+          ? "Processing timed out. Try a shorter recording (under 30 seconds)."
+          : err?.message === "Network Error"
+            ? "Cannot reach server. Check your connection and try again."
+            : "Could not process audio. Make sure the API is running and try again.";
+      setErrorMsg(clientMsg);
       setState("error");
     }
   };
@@ -169,7 +149,6 @@ export default function ListenScreen({ navigation }: any) {
     setState("idle");
     setResults([]);
     setTranscript("");
-    setStreamText("");
     setErrorMsg("");
   };
 
@@ -227,13 +206,6 @@ export default function ListenScreen({ navigation }: any) {
           )}
         </TouchableOpacity>
       </Animated.View>
-
-      {streamText ? (
-        <View style={s.stream}>
-          <Text style={s.streamLbl}>HEARING</Text>
-          <Text style={s.streamTxt}>{streamText}</Text>
-        </View>
-      ) : null}
 
       {transcript ? (
         <View style={s.transc}>
@@ -325,27 +297,6 @@ const s = StyleSheet.create({
   orbRec: { backgroundColor: theme.colors.ember },
   orbProc: { backgroundColor: theme.colors.dust },
   orbSym: { fontSize: 36, color: theme.colors.ink },
-  stream: {
-    marginTop: 20,
-    padding: 14,
-    borderLeftWidth: 2,
-    borderLeftColor: theme.colors.gold,
-    backgroundColor: theme.colors.goldGlow,
-    width: "100%",
-  },
-  streamLbl: {
-    fontSize: 8,
-    letterSpacing: 3,
-    color: theme.colors.gold,
-    marginBottom: 4,
-    textTransform: "uppercase",
-  },
-  streamTxt: {
-    fontSize: 15,
-    color: theme.colors.parchment,
-    fontStyle: "italic",
-    lineHeight: 22,
-  },
   transc: {
     marginTop: 14,
     padding: 14,
