@@ -3,261 +3,408 @@ import {
   View,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
+  FlatList,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../theme";
+import { C, getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
 import { trackSearch } from "../lib/analytics";
 
 const INTENTS = [
-  "a prayer for grief",
-  "morning blessing",
-  "prayer for peace",
-  "gratitude and thanks",
-  "healing and recovery",
-  "prayer before a meal",
-  "forgiveness and mercy",
-  "guidance and wisdom",
+  { label: "Gratitude", icon: "✦" },
+  { label: "Healing", icon: "◎" },
+  { label: "Guidance", icon: "⊕" },
+  { label: "Peace", icon: "◆" },
+  { label: "Forgiveness", icon: "∗" },
+  { label: "Strength", icon: "↑" },
+  { label: "Morning", icon: "◐" },
+  { label: "Evening", icon: "◑" },
 ];
-const MOODS = [
-  "peaceful",
-  "reverent",
-  "joyful",
-  "repentant",
-  "grateful",
-  "meditative",
-];
-const OCCASIONS = [
-  "morning",
-  "evening",
-  "daily",
-  "grief",
-  "celebration",
-  "healing",
-];
+
+const MOODS = ["Hopeful", "Sorrowful", "Contemplative", "Joyful", "Fearful", "Grateful"];
+const OCCASIONS = ["Daily", "Sabbath", "Fasting", "Funeral", "Wedding", "Birth", "New Year"];
 
 export default function SearchScreen({ navigation }: any) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [mood, setMood] = useState("");
-  const [occ, setOcc] = useState("");
+  const [occasion, setOccasion] = useState("");
 
-  const doSearch = async (q = query, m = mood, o = occ) => {
-    if (!q.trim() && !m && !o) return;
+  const doSearch = async (q = query) => {
+    if (!q.trim() && !mood && !occasion) return;
     setLoading(true);
-    setSearched(true);
+    setHasSearched(true);
     try {
-      const res = await PrayerAPI.search(q || m || o, { limit: 20 });
-      const r = res.data.results || [];
-      setResults(r);
-      trackSearch(q || m || o, r.length);
-    } catch {
-      setResults([]);
+      const res = await PrayerAPI.search({
+        query: q,
+        mood: mood || undefined,
+        occasion: occasion || undefined,
+        limit: 20,
+      });
+      setResults(res.data.results || []);
+      trackSearch({ query: q, mood, occasion, resultCount: (res.data.results || []).length });
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleIntent = (label: string) => {
+    setQuery(label);
+    doSearch(label);
+  };
+
+  const relName = (item: any) => item.religions?.name ?? "";
+
+  const renderResult = ({ item }: { item: any }) => {
+    const name = relName(item);
+    const color = getReligionColor(name);
+    const tint = getReligionTint(name);
+    const icon = getReligionIcon(name);
+    return (
+      <TouchableOpacity
+        style={s.card}
+        activeOpacity={0.75}
+        onPress={() => navigation.navigate("PrayerDetail", { prayer: item })}
+      >
+        <View style={[s.iconBox, { backgroundColor: tint }]}>
+          <Text style={[s.iconText, { color }]}>{icon}</Text>
+        </View>
+        <View style={s.cardBody}>
+          <View style={s.cardMeta}>
+            <Text style={[s.cardRel, { color }]}>{name}</Text>
+            {item.language ? <Text style={s.cardLang}> · {item.language}</Text> : null}
+          </View>
+          <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={s.cardExcerpt} numberOfLines={1}>{item.body}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
-    <SafeAreaView style={s.container}>
-      <View style={s.header}>
-        <Text style={s.eyebrow}>SACRA</Text>
-        <Text style={s.heading}>Search</Text>
-      </View>
-
-      <View style={s.row}>
-        <TextInput
-          style={s.input}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search prayers, moods, occasions, meanings..."
-          placeholderTextColor={theme.colors.parchmentMuted}
-          onSubmitEditing={() => doSearch()}
-          returnKeyType="search"
-        />
-        <TouchableOpacity style={s.btn} onPress={() => doSearch()}>
-          <Text style={s.btnTxt}>⊕</Text>
-        </TouchableOpacity>
-      </View>
-
-      {!searched && (
-        <ScrollView>
-          <Text style={s.lbl}>SEARCH BY INTENT</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={s.chips}>
-              {INTENTS.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={s.chip}
-                  onPress={() => {
-                    setQuery(c);
-                    doSearch(c);
-                  }}
-                >
-                  <Text style={s.chipTxt}>{c}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-          <Text style={[s.lbl, { marginTop: 20 }]}>FILTER BY MOOD</Text>
-          <View style={s.chipWrap}>
-            {MOODS.map((m2) => (
-              <TouchableOpacity
-                key={m2}
-                style={[s.chip, mood === m2 && s.chipOn]}
-                onPress={() => {
-                  const n = mood === m2 ? "" : m2;
-                  setMood(n);
-                  doSearch(query, n, occ);
-                }}
-              >
-                <Text style={[s.chipTxt, mood === m2 && s.chipTxtOn]}>
-                  {m2}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={[s.lbl, { marginTop: 16 }]}>FILTER BY OCCASION</Text>
-          <View style={s.chipWrap}>
-            {OCCASIONS.map((o2) => (
-              <TouchableOpacity
-                key={o2}
-                style={[s.chip, occ === o2 && s.chipOn]}
-                onPress={() => {
-                  const n = occ === o2 ? "" : o2;
-                  setOcc(n);
-                  doSearch(query, mood, n);
-                }}
-              >
-                <Text style={[s.chipTxt, occ === o2 && s.chipTxtOn]}>{o2}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      )}
-
-      {loading && (
-        <ActivityIndicator
-          color={theme.colors.gold}
-          style={{ marginTop: 40 }}
-        />
-      )}
-
+    <SafeAreaView style={s.container} edges={["top"]}>
       <FlatList
         data={results}
         keyExtractor={(i) => i.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={s.card}
-            onPress={() =>
-              navigation.navigate("PrayerDetail", { prayer: item })
-            }
-          >
-            <Text style={s.cTitle}>{item.title}</Text>
-            <Text style={s.cBody} numberOfLines={3}>
-              {item.body}
-            </Text>
-            <Text style={s.cSrc}>{item.source}</Text>
-          </TouchableOpacity>
-        )}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 110 }}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <>
+            {/* Header */}
+            <View style={s.header}>
+              <Text style={s.eyebrow}>Search</Text>
+              <Text style={s.heading}>Seek a feeling</Text>
+            </View>
+
+            {/* Search bar */}
+            <View style={s.inputWrap}>
+              <Text style={s.searchIcon}>⊙</Text>
+              <TextInput
+                style={s.input}
+                placeholder="A prayer for healing, peace…"
+                placeholderTextColor={C.text3}
+                value={query}
+                onChangeText={setQuery}
+                returnKeyType="search"
+                onSubmitEditing={() => doSearch()}
+                selectionColor={C.accent}
+              />
+              {query.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setQuery("");
+                    setResults([]);
+                    setHasSearched(false);
+                  }}
+                >
+                  <Text style={s.clearBtn}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Intent chips + filters (only before first search) */}
+            {!hasSearched && (
+              <>
+                <Text style={s.sectionLabel}>Try a feeling</Text>
+                <View style={s.intentGrid}>
+                  {INTENTS.map((intent) => (
+                    <TouchableOpacity
+                      key={intent.label}
+                      style={s.intentChip}
+                      onPress={() => handleIntent(intent.label)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={s.intentIcon}>{intent.icon}</Text>
+                      <Text style={s.intentLabel}>{intent.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={s.sectionLabel}>Mood</Text>
+                <View style={s.filterRow}>
+                  {MOODS.map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[s.filterChip, mood === m && s.filterChipActive]}
+                      onPress={() => setMood(mood === m ? "" : m)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.filterChipText, mood === m && s.filterChipTextActive]}>
+                        {m}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={s.sectionLabel}>Occasion</Text>
+                <View style={s.filterRow}>
+                  {OCCASIONS.map((o) => (
+                    <TouchableOpacity
+                      key={o}
+                      style={[s.filterChip, occasion === o && s.filterChipActive]}
+                      onPress={() => setOccasion(occasion === o ? "" : o)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[s.filterChipText, occasion === o && s.filterChipTextActive]}>
+                        {o}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {(mood || occasion) && (
+                  <TouchableOpacity
+                    style={s.searchBtn}
+                    onPress={() => doSearch()}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.searchBtnTxt}>Search →</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {loading && (
+              <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} />
+            )}
+
+            {hasSearched && !loading && results.length > 0 && (
+              <Text style={s.sectionLabel}>{results.length} prayers found</Text>
+            )}
+          </>
+        }
+        renderItem={renderResult}
         ListEmptyComponent={
-          searched && !loading ? (
-            <Text style={s.empty}>No prayers found. Try different words.</Text>
+          hasSearched && !loading ? (
+            <View style={s.empty}>
+              <Text style={s.emptyTitle}>No prayers found</Text>
+              <Text style={s.emptySub}>Try different words or remove filters</Text>
+            </View>
           ) : null
         }
-        contentContainerStyle={{ paddingBottom: 40 }}
       />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink, padding: 20 },
-  header: { marginBottom: 20 },
+  container: { flex: 1, backgroundColor: C.bg },
+
+  header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 20 },
   eyebrow: {
-    fontSize: 9,
-    letterSpacing: 4,
-    color: theme.colors.gold,
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    marginBottom: 4,
+    color: C.text3,
+    marginBottom: 6,
   },
-  heading: { fontSize: 36, fontWeight: "900", color: theme.colors.parchment },
-  row: { flexDirection: "row", gap: 8, marginBottom: 20 },
+  heading: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 42,
+    lineHeight: 40,
+    color: C.text,
+    letterSpacing: -0.5,
+  },
+
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 22,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 22,
+  },
+  searchIcon: { fontSize: 16, color: C.text3 },
   input: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.parchment,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 12,
-    fontSize: 14,
-    fontStyle: "italic",
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 19,
+    color: C.text,
+    padding: 0,
   },
-  btn: {
-    backgroundColor: theme.colors.gold,
-    width: 48,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnTxt: { fontSize: 20, color: theme.colors.ink },
-  lbl: {
-    fontSize: 8,
-    letterSpacing: 3,
-    color: theme.colors.dust,
-    textTransform: "uppercase",
-    marginBottom: 10,
-  },
-  chips: { flexDirection: "row", gap: 8 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  chipOn: {
-    backgroundColor: theme.colors.goldDim,
-    borderColor: theme.colors.gold,
-  },
-  chipTxt: {
-    fontSize: 11,
-    color: theme.colors.parchmentDim,
-    fontStyle: "italic",
-  },
-  chipTxtOn: { color: theme.colors.gold },
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 16,
-    marginBottom: 10,
-  },
-  cTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 6,
-  },
-  cBody: {
+  clearBtn: {
     fontSize: 13,
-    color: theme.colors.parchmentDim,
-    lineHeight: 19,
-    marginBottom: 6,
-    fontStyle: "italic",
+    color: C.text3,
+    paddingHorizontal: 4,
   },
-  cSrc: { fontSize: 10, color: theme.colors.dust },
-  empty: {
-    textAlign: "center",
-    color: theme.colors.dust,
-    marginTop: 40,
+
+  sectionLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: C.text3,
+    marginHorizontal: 22,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  intentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 9,
+    paddingHorizontal: 22,
+    marginBottom: 22,
+  },
+  intentChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+  },
+  intentIcon: { fontSize: 12, color: C.accent },
+  intentLabel: {
+    fontFamily: "HankenGrotesk_600SemiBold",
     fontSize: 14,
-    fontStyle: "italic",
+    color: C.text2,
+  },
+
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 22,
+    marginBottom: 14,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: C.surface,
+  },
+  filterChipActive: {
+    backgroundColor: C.accent + "18",
+    borderColor: C.accent,
+  },
+  filterChipText: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 13,
+    color: C.text2,
+  },
+  filterChipTextActive: {
+    color: C.accent,
+    fontFamily: "HankenGrotesk_700Bold",
+  },
+
+  searchBtn: {
+    alignSelf: "center",
+    backgroundColor: C.accent,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 999,
+    marginTop: 16,
+    marginBottom: 22,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  searchBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 15,
+    color: C.onacc,
+  },
+
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.hair,
+  },
+  iconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  iconText: { fontSize: 19 },
+  cardBody: { flex: 1, minWidth: 0 },
+  cardMeta: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
+  cardRel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 10.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  cardLang: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 10.5,
+    color: C.text3,
+  },
+  cardTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 23,
+    lineHeight: 25,
+    color: C.text,
+    marginBottom: 3,
+  },
+  cardExcerpt: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 16.5,
+    lineHeight: 22,
+    color: C.text2,
+  },
+
+  empty: { alignItems: "center", paddingTop: 50, paddingHorizontal: 40 },
+  emptyTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 28,
+    color: C.text2,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptySub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 17,
+    color: C.text3,
+    textAlign: "center",
+    lineHeight: 25,
   },
 });

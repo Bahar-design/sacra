@@ -9,7 +9,7 @@ import {
   Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../theme";
+import { C, getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
 import { savePrayer, unsavePrayer, getUser } from "../lib/supabase";
 import {
@@ -27,117 +27,172 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    setSaved(isPrayerSaved(prayer.id)); // instant local check first
-    getUser().then(({ data }) => setUserId(data.user?.id || null));
+    setSaved(isPrayerSaved(prayer.id));
+
+    getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+
     PrayerAPI.getSimilar(prayer.id)
       .then((res) => {
-        const sim = res.data.similar || [];
-        setSimilar(sim);
-        if (sim.length > 0)
-          trackCrossFaithViewed(
-            prayer.religions?.name || "",
-            sim[0].religion_id,
-          );
+        setSimilar(res.data.similar || []);
+        if ((res.data.similar || []).length > 0) {
+          trackCrossFaithViewed({ prayer_id: prayer.id });
+        }
       })
-      .catch(() => setSimilar([]))
+      .catch(console.error)
       .finally(() => setLoadSim(false));
   }, [prayer.id]);
 
   const handleSave = async () => {
-    if (saved) {
-      removeFromDevice(prayer.id);
-      if (userId) await unsavePrayer(userId, prayer.id);
-      setSaved(false);
-    } else {
+    const next = !saved;
+    setSaved(next);
+    if (next) {
       saveToDevice(prayer);
       if (userId) await savePrayer(userId, prayer.id);
-      setSaved(true);
-      trackSaved(prayer.id, prayer.religions?.name || "");
+      trackSaved({ prayer_id: prayer.id, religion: relName });
+    } else {
+      removeFromDevice(prayer.id);
+      if (userId) await unsavePrayer(userId, prayer.id);
     }
   };
 
-  const handleShare = () =>
-    Share.share({
-      message: `${prayer.title}\n\n${prayer.body}\n\n— ${prayer.source || "SACRA"}`,
-      title: prayer.title,
+  const handleShare = async () => {
+    await Share.share({
+      message: `${prayer.title}\n\n${prayer.body}\n\n— Discovered with SACRA`,
     });
+  };
+
+  const relName = prayer.religions?.name ?? "";
+  const relColor = getReligionColor(relName);
+  const relIcon = getReligionIcon(relName);
+  const relTint = getReligionTint(relName);
 
   return (
-    <SafeAreaView style={s.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 60 }}>
-        <TouchableOpacity style={s.back} onPress={() => navigation.goBack()}>
-          <Text style={s.backTxt}>← Return</Text>
+    <SafeAreaView style={s.container} edges={["top"]}>
+      {/* Sticky header */}
+      <View style={s.stickyHeader}>
+        <TouchableOpacity
+          style={s.circleBtn}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Text style={s.circleBtnTxt}>←</Text>
         </TouchableOpacity>
-
-        <View style={s.badge}>
-          <Text style={s.religion}>
-            {prayer.religions?.icon_emoji} {prayer.religions?.name || ""}
+        <TouchableOpacity
+          style={[s.circleBtn, saved && { backgroundColor: relColor + "22", borderColor: relColor }]}
+          onPress={handleSave}
+          activeOpacity={0.7}
+        >
+          <Text style={[s.circleBtnTxt, saved && { color: relColor }]}>
+            {saved ? "♥" : "♡"}
           </Text>
-          {prayer.tradition ? (
-            <Text style={s.tradition}>{prayer.tradition}</Text>
-          ) : null}
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.scroll}
+      >
+        {/* Religion pill */}
+        <View style={[s.relPill, { backgroundColor: relTint, borderColor: relColor + "55" }]}>
+          <Text style={[s.relPillText, { color: relColor }]}>
+            {relIcon} {relName}
+          </Text>
         </View>
 
+        {/* Title */}
         <Text style={s.title}>{prayer.title}</Text>
 
-        <View style={s.divider}>
-          <View style={s.dLine} />
-          <Text style={s.dDia}>◆</Text>
-          <View style={s.dLine} />
-        </View>
+        {/* Source + language meta */}
+        {(prayer.source || prayer.language || prayer.tradition) && (
+          <View style={s.metaRow}>
+            {prayer.language && (
+              <Text style={s.metaChip}>{prayer.language}</Text>
+            )}
+            {prayer.tradition && (
+              <Text style={s.metaChip}>{prayer.tradition}</Text>
+            )}
+            {prayer.source && (
+              <Text style={s.metaSource} numberOfLines={1}>{prayer.source}</Text>
+            )}
+          </View>
+        )}
 
+        {/* Gold divider */}
+        <View style={s.divider} />
+
+        {/* Prayer body */}
         <Text style={s.body}>{prayer.body}</Text>
-        {prayer.source ? <Text style={s.source}>— {prayer.source}</Text> : null}
 
+        {/* Actions */}
         <View style={s.actions}>
           <TouchableOpacity
-            style={[s.act, saved && s.actOn]}
+            style={s.saveBtn}
             onPress={handleSave}
+            activeOpacity={0.85}
           >
-            <Text style={[s.actTxt, saved && s.actTxtOn]}>
-              {saved ? "◆ Saved" : "◇ Save"}
+            <Text style={s.saveBtnTxt}>
+              {saved ? "♥ Saved" : "♡ Save to sanctuary"}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.act} onPress={handleShare}>
-            <Text style={s.actTxt}>↗ Share</Text>
+          <TouchableOpacity
+            style={s.shareBtn}
+            onPress={handleShare}
+            activeOpacity={0.75}
+          >
+            <Text style={s.shareBtnTxt}>↗</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={s.section}>
-          <Text style={s.secLbl}>PRAYERS LIKE THIS FROM OTHER TRADITIONS</Text>
-          <Text style={s.secSub}>
-            Sacred texts share themes of devotion, surrender, and grace across
-            all faiths
+        {/* Cross-faith section */}
+        <View style={s.crossFaithSection}>
+          <Text style={s.crossFaithTitle}>Echoes across faiths</Text>
+          <Text style={s.crossFaithSub}>
+            This prayer resonates with similar words from other traditions.
           </Text>
-          {loadSim ? (
-            <ActivityIndicator
-              color={theme.colors.gold}
-              style={{ marginTop: 20 }}
-            />
-          ) : similar.length === 0 ? (
-            <Text style={s.none}>
-              No cross-faith matches found for this prayer.
-            </Text>
-          ) : (
-            similar.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                style={s.simCard}
-                onPress={() => navigation.push("PrayerDetail", { prayer: p })}
-              >
-                <Text style={s.simRel}>
-                  {p.religion_icon} {p.religion_name}
-                </Text>
-                <Text style={s.simTitle}>{p.title}</Text>
-                <Text style={s.simBody} numberOfLines={2}>
-                  {p.body}
-                </Text>
-                <Text style={s.simPct}>
-                  {(p.similarity * 100).toFixed(0)}% thematic similarity
-                </Text>
-              </TouchableOpacity>
-            ))
+
+          {loadSim && (
+            <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />
           )}
+
+          {!loadSim && similar.length === 0 && (
+            <Text style={s.crossFaithEmpty}>No cross-faith matches found.</Text>
+          )}
+
+          {similar.map((item) => {
+            const name = item.religion_name ?? item.religions?.name ?? "";
+            const color = getReligionColor(name);
+            const icon = getReligionIcon(name) || item.religion_icon || "";
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={s.faithNode}
+                activeOpacity={0.75}
+                onPress={() =>
+                  navigation.push("PrayerDetail", {
+                    prayer: { ...item, religions: { name } },
+                  })
+                }
+              >
+                <View style={[s.faithNodeBar, { backgroundColor: color }]} />
+                <View style={s.faithNodeBody}>
+                  <View style={s.faithNodeMeta}>
+                    <Text style={[s.faithNodeRel, { color }]}>
+                      {icon} {name}
+                    </Text>
+                    {item.similarity != null && (
+                      <Text style={s.faithNodeSim}>
+                        {(item.similarity * 100).toFixed(0)}% match
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={s.faithNodeTitle}>{item.title}</Text>
+                  <Text style={s.faithNodeExcerpt} numberOfLines={2}>
+                    {item.body}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -145,116 +200,210 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink },
-  back: { padding: 20, paddingBottom: 0 },
-  backTxt: { fontSize: 12, color: theme.colors.gold, letterSpacing: 1 },
-  badge: {
-    marginHorizontal: 20,
-    marginTop: 16,
+  container: { flex: 1, backgroundColor: C.bg },
+
+  stickyHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  religion: {
-    fontSize: 11,
-    color: theme.colors.gold,
-    letterSpacing: 2,
-    textTransform: "uppercase",
+  circleBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  tradition: { fontSize: 10, color: theme.colors.dust, fontStyle: "italic" },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    margin: 20,
+  circleBtnTxt: {
+    fontSize: 17,
+    color: C.text2,
+  },
+
+  scroll: { paddingBottom: 110, paddingHorizontal: 22 },
+
+  relPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 13,
     marginBottom: 16,
-    lineHeight: 36,
   },
+  relPillText: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+
+  title: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 46,
+    lineHeight: 48,
+    color: C.text,
+    letterSpacing: -0.5,
+    marginBottom: 16,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  metaChip: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: C.text3,
+    backgroundColor: C.surface2,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  metaSource: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 14,
+    color: C.text3,
+    flex: 1,
+  },
+
   divider: {
+    height: 1,
+    backgroundColor: C.line,
+    marginBottom: 26,
+  },
+
+  body: {
+    fontFamily: "Newsreader_400Regular",
+    fontSize: 22,
+    lineHeight: 36,
+    color: C.text,
+    letterSpacing: 0.1,
+    marginBottom: 32,
+  },
+
+  actions: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 20,
-    marginBottom: 20,
-    gap: 10,
+    gap: 12,
+    marginBottom: 40,
   },
-  dLine: { flex: 1, height: 1, backgroundColor: theme.colors.goldBorder },
-  dDia: { fontSize: 10, color: theme.colors.gold },
-  body: {
-    fontSize: 16,
-    color: theme.colors.parchmentDim,
-    lineHeight: 28,
-    margin: 20,
-    marginTop: 0,
-    fontStyle: "italic",
-  },
-  source: {
-    fontSize: 12,
-    color: theme.colors.dust,
-    margin: 20,
-    marginTop: 0,
-    letterSpacing: 1,
-  },
-  actions: { flexDirection: "row", gap: 12, margin: 20, marginTop: 8 },
-  act: {
+  saveBtn: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 12,
+    backgroundColor: C.accent,
+    paddingVertical: 15,
+    borderRadius: 999,
     alignItems: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  actOn: {
-    backgroundColor: theme.colors.goldDim,
-    borderColor: theme.colors.gold,
+  saveBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 15,
+    color: C.onacc,
   },
-  actTxt: {
-    fontSize: 12,
-    color: theme.colors.parchmentDim,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  actTxtOn: { color: theme.colors.gold },
-  section: { margin: 20, marginTop: 4 },
-  secLbl: {
-    fontSize: 9,
-    letterSpacing: 3,
-    color: theme.colors.gold,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  secSub: {
-    fontSize: 13,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    marginBottom: 20,
-    lineHeight: 19,
-  },
-  none: { fontSize: 13, color: theme.colors.dust, fontStyle: "italic" },
-  simCard: {
-    backgroundColor: theme.colors.surface,
+  shareBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 14,
-    marginBottom: 10,
+    borderColor: C.line,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  simRel: {
-    fontSize: 9,
-    color: theme.colors.gold,
-    letterSpacing: 2,
+  shareBtnTxt: {
+    fontSize: 19,
+    color: C.text2,
+  },
+
+  // Cross-faith section
+  crossFaithSection: {
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+    paddingTop: 28,
+  },
+  crossFaithTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 30,
+    lineHeight: 30,
+    color: C.text,
+    marginBottom: 8,
+  },
+  crossFaithSub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 17,
+    lineHeight: 25,
+    color: C.text2,
+    marginBottom: 22,
+  },
+  crossFaithEmpty: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 16,
+    color: C.text3,
+    marginTop: 10,
+  },
+
+  faithNode: {
+    flexDirection: "row",
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    overflow: "hidden",
+    marginBottom: 12,
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  faithNodeBar: {
+    width: 5,
+    flexShrink: 0,
+  },
+  faithNodeBody: {
+    flex: 1,
+    padding: 16,
+  },
+  faithNodeMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  faithNodeRel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 11,
+    letterSpacing: 1,
     textTransform: "uppercase",
-    marginBottom: 4,
   },
-  simTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 4,
+  faithNodeSim: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 11,
+    color: C.text3,
   },
-  simBody: {
-    fontSize: 12,
-    color: theme.colors.parchmentDim,
-    fontStyle: "italic",
-    lineHeight: 18,
+  faithNodeTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 22,
+    lineHeight: 24,
+    color: C.text,
     marginBottom: 6,
   },
-  simPct: { fontSize: 10, color: theme.colors.ember },
+  faithNodeExcerpt: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 15,
+    lineHeight: 22,
+    color: C.text2,
+  },
 });

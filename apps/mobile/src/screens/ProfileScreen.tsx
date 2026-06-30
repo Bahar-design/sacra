@@ -9,247 +9,378 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { theme } from "../theme";
-import { getAllOfflinePrayers } from "../lib/offlineStorage";
-import { supabase, signOut } from "../lib/supabase";
+import { C, getReligionColor, getReligionIcon } from "../theme";
+import { supabase } from "../lib/supabase";
+import { getAllOfflinePrayers, removeFromDevice } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
-  const [prayers, setPrayers] = useState<any[]>([]);
-  const [user, setUser] = useState<any>(null);
+  const [saved, setSaved] = useState<any[]>([]);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      setPrayers(getAllOfflinePrayers());
-      supabase.auth.getUser().then(({ data }) => setUser(data.user));
+      setSaved(getAllOfflinePrayers());
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setUserEmail(user.email ?? null);
+          setIsGuest(false);
+        } else {
+          setIsGuest(true);
+        }
+      });
     }, []),
   );
 
   const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          await signOut();
-          // Auth state change listener in App.tsx will handle showing auth screen
+    Alert.alert(
+      "Sign out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: () => supabase.auth.signOut(),
         },
-      },
-    ]);
+      ],
+    );
+  };
+
+  const handleRemove = (id: string) => {
+    removeFromDevice(id);
+    setSaved((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const initials = userEmail
+    ? userEmail.slice(0, 2).toUpperCase()
+    : "GU";
+
+  const renderSaved = ({ item }: { item: any }) => {
+    // Offline prayers from SQLite have flat `religion` string, not nested `religions.name`
+    const name = item.religion ?? item.religions?.name ?? "";
+    const color = getReligionColor(name);
+    const icon = getReligionIcon(name);
+    return (
+      <TouchableOpacity
+        style={s.savedCard}
+        activeOpacity={0.75}
+        onPress={() => navigation.navigate("PrayerDetail", { prayer: item })}
+      >
+        <View style={[s.savedBar, { backgroundColor: color }]} />
+        <View style={s.savedBody}>
+          <View style={s.savedMeta}>
+            <Text style={[s.savedRel, { color }]}>{icon} {name}</Text>
+          </View>
+          <Text style={s.savedTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={s.savedExcerpt} numberOfLines={1}>{item.body}</Text>
+        </View>
+        <TouchableOpacity
+          style={s.removeBtn}
+          onPress={() => handleRemove(item.id)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={s.removeBtnTxt}>✕</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <SafeAreaView style={s.container}>
-      {/* Header */}
-      <View style={s.header}>
-        <Text style={s.eyebrow}>SACRA</Text>
-        <Text style={s.heading}>Sacred</Text>
-
-        {/* User info */}
-        {user ? (
-          <View style={s.userRow}>
-            <View style={s.userInfo}>
-              <Text style={s.userLabel}>SIGNED IN AS</Text>
-              <Text style={s.userEmail} numberOfLines={1}>
-                {user.email || user.user_metadata?.full_name || "User"}
-              </Text>
+    <SafeAreaView style={s.container} edges={["top"]}>
+      <FlatList
+        data={saved}
+        keyExtractor={(i) => i.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 110 }}
+        ListHeaderComponent={
+          <>
+            {/* Header eyebrow */}
+            <View style={s.header}>
+              <Text style={s.eyebrow}>Sacred</Text>
+              <Text style={s.heading}>Your sanctuary</Text>
             </View>
-            <TouchableOpacity style={s.signOutBtn} onPress={handleSignOut}>
-              <Text style={s.signOutText}>Sign Out</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={s.guestRow}>
-            <Text style={s.guestText}>
-              You are browsing as a guest. Sign in to sync your saved prayers
-              across devices.
-            </Text>
-          </View>
-        )}
-      </View>
 
-      {/* Contribute button */}
-      <TouchableOpacity
-        style={s.contributeBtn}
-        onPress={() => navigation.navigate("CommunitySubmit")}
-      >
-        <Text style={s.contributeTxt}>✦ Contribute a Prayer to SACRA</Text>
-      </TouchableOpacity>
+            {/* Avatar + account */}
+            <View style={s.accountRow}>
+              <View style={s.avatar}>
+                <Text style={s.avatarText}>{initials}</Text>
+              </View>
+              <View style={s.accountInfo}>
+                <Text style={s.accountEmail} numberOfLines={1}>
+                  {isGuest ? "Browsing as guest" : (userEmail ?? "")}
+                </Text>
+                <Text style={s.accountSub}>
+                  {saved.length} prayer{saved.length !== 1 ? "s" : ""} saved offline
+                </Text>
+              </View>
+              {!isGuest && (
+                <TouchableOpacity
+                  style={s.signOutBtn}
+                  onPress={handleSignOut}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.signOutTxt}>Sign out</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-      {/* Saved prayers */}
-      <View style={s.sectionHeader}>
-        <Text style={s.sectionLabel}>SAVED PRAYERS</Text>
-        <Text style={s.sectionSub}>
-          Available offline — even without internet
-        </Text>
-      </View>
+            {/* Stats */}
+            <View style={s.statsRow}>
+              <View style={s.statCard}>
+                <Text style={s.statNum}>{saved.length}</Text>
+                <Text style={s.statLabel}>Saved</Text>
+              </View>
+              <View style={s.statCard}>
+                <Text style={s.statNum}>
+                  {[...new Set(saved.map((p) => p.religion ?? p.religions?.name).filter(Boolean))].length}
+                </Text>
+                <Text style={s.statLabel}>Traditions</Text>
+              </View>
+              <View style={s.statCard}>
+                <Text style={s.statNum}>
+                  {[...new Set(saved.map((p) => p.language).filter(Boolean))].length || "—"}
+                </Text>
+                <Text style={s.statLabel}>Languages</Text>
+              </View>
+            </View>
 
-      {prayers.length === 0 ? (
-        <View style={s.empty}>
-          <Text style={s.emptySymbol}>◇</Text>
-          <Text style={s.emptyTitle}>No saved prayers yet</Text>
-          <Text style={s.emptySub}>
-            Tap ◇ Save on any prayer to add it here.{"\n"}
-            Saved prayers work offline in churches, mosques, and temples.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={prayers}
-          keyExtractor={(i) => i.id}
-          contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 20 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={s.card}
-              onPress={() =>
-                navigation.navigate("PrayerDetail", { prayer: item })
-              }
-            >
-              <Text style={s.cardRel}>{item.religion}</Text>
-              <Text style={s.cardTitle}>{item.title}</Text>
-              <Text style={s.cardBody} numberOfLines={2}>
-                {item.body}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-      )}
+            {/* Saved heading */}
+            {saved.length > 0 && (
+              <Text style={s.sectionLabel}>Kept close</Text>
+            )}
+
+            {saved.length === 0 && (
+              <View style={s.emptySaved}>
+                <Text style={s.emptyTitle}>Nothing saved yet</Text>
+                <Text style={s.emptySub}>
+                  Hold the heart on any prayer to keep it here, even offline.
+                </Text>
+              </View>
+            )}
+          </>
+        }
+        renderItem={renderSaved}
+        ListFooterComponent={
+          <TouchableOpacity
+            style={s.contributeCta}
+            onPress={() => navigation.navigate("CommunitySubmit")}
+            activeOpacity={0.8}
+          >
+            <Text style={s.contributeIcon}>+</Text>
+            <View>
+              <Text style={s.contributeTxt}>Contribute a prayer</Text>
+              <Text style={s.contributeSub}>Share a tradition with the world</Text>
+            </View>
+          </TouchableOpacity>
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink },
-  header: { padding: 20, paddingBottom: 12 },
+  container: { flex: 1, backgroundColor: C.bg },
+
+  header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 20 },
   eyebrow: {
-    fontSize: 9,
-    letterSpacing: 4,
-    color: theme.colors.gold,
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    marginBottom: 4,
+    color: C.text3,
+    marginBottom: 6,
   },
   heading: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: theme.colors.parchment,
-    marginBottom: 14,
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 42,
+    lineHeight: 40,
+    color: C.text,
+    letterSpacing: -0.5,
   },
-  userRow: {
+
+  accountRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 12,
+    gap: 14,
+    paddingHorizontal: 22,
+    marginBottom: 22,
   },
-  userInfo: { flex: 1 },
-  userLabel: {
-    fontSize: 8,
-    letterSpacing: 3,
-    color: theme.colors.gold,
-    textTransform: "uppercase",
-    marginBottom: 2,
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 999,
+    backgroundColor: C.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 4,
   },
-  userEmail: {
-    fontSize: 13,
-    color: theme.colors.parchmentDim,
-    fontStyle: "italic",
+  avatarText: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 17,
+    color: C.onacc,
+  },
+  accountInfo: { flex: 1, minWidth: 0 },
+  accountEmail: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 15,
+    color: C.text,
+    marginBottom: 3,
+  },
+  accountSub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 14,
+    color: C.text3,
   },
   signOutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: theme.colors.emberDim,
+    borderColor: C.line,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
   },
-  signOutText: {
-    fontSize: 10,
-    color: theme.colors.ember,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  guestRow: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 12,
-  },
-  guestText: {
+  signOutTxt: {
+    fontFamily: "HankenGrotesk_600SemiBold",
     fontSize: 12,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    lineHeight: 18,
+    color: C.text2,
   },
-  contributeBtn: {
-    marginHorizontal: 20,
-    marginBottom: 20,
+
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 22,
+    marginBottom: 28,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
+    borderColor: C.line,
     padding: 14,
     alignItems: "center",
   },
-  contributeTxt: {
-    fontSize: 12,
-    color: theme.colors.gold,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  sectionHeader: { paddingHorizontal: 20, marginBottom: 12 },
-  sectionLabel: {
-    fontSize: 9,
-    letterSpacing: 3,
-    color: theme.colors.gold,
-    textTransform: "uppercase",
+  statNum: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 32,
+    color: C.text,
+    lineHeight: 34,
     marginBottom: 4,
   },
-  sectionSub: { fontSize: 11, color: theme.colors.dust, fontStyle: "italic" },
-  empty: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
+  statLabel: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: C.text3,
   },
-  emptySymbol: {
-    fontSize: 48,
-    color: theme.colors.goldBorder,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: theme.colors.parchmentDim,
-    marginBottom: 8,
-  },
-  emptySub: {
-    fontSize: 13,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 16,
+
+  sectionLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: C.text3,
+    marginHorizontal: 22,
     marginBottom: 12,
   },
-  cardRel: {
-    fontSize: 9,
-    color: theme.colors.gold,
-    letterSpacing: 2,
+
+  savedCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    marginHorizontal: 22,
+    marginBottom: 10,
+    overflow: "hidden",
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  savedBar: { width: 5 },
+  savedBody: { flex: 1, padding: 14 },
+  savedMeta: { marginBottom: 6 },
+  savedRel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 10.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  savedTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 22,
+    lineHeight: 24,
+    color: C.text,
     marginBottom: 4,
   },
-  cardTitle: {
+  savedExcerpt: {
+    fontFamily: "Newsreader_400Regular_Italic",
     fontSize: 15,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 6,
+    lineHeight: 21,
+    color: C.text2,
   },
-  cardBody: {
-    fontSize: 13,
-    color: theme.colors.parchmentDim,
-    fontStyle: "italic",
-    lineHeight: 19,
+  removeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removeBtnTxt: { fontSize: 13, color: C.text3 },
+
+  emptySaved: {
+    alignItems: "center",
+    paddingHorizontal: 40,
+    paddingTop: 20,
+    paddingBottom: 30,
+  },
+  emptyTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 28,
+    color: C.text2,
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  emptySub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 17,
+    color: C.text3,
+    textAlign: "center",
+    lineHeight: 25,
+  },
+
+  contributeCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginHorizontal: 22,
+    marginTop: 20,
+    borderWidth: 1.5,
+    borderColor: C.line,
+    borderStyle: "dashed",
+    borderRadius: 16,
+    padding: 18,
+  },
+  contributeIcon: {
+    fontSize: 24,
+    color: C.text3,
+    width: 30,
+    textAlign: "center",
+  },
+  contributeTxt: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 15,
+    color: C.text,
+    marginBottom: 3,
+  },
+  contributeSub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 14,
+    color: C.text3,
   },
 });

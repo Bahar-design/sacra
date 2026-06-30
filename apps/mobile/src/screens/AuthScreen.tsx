@@ -14,10 +14,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
-import { theme } from "../theme";
+import { C } from "../theme";
 import { signIn, signUp, supabase } from "../lib/supabase";
 
-// Required for OAuth redirect handling
 WebBrowser.maybeCompleteAuthSession();
 
 interface Props {
@@ -30,8 +29,6 @@ export default function AuthScreen({ onSuccess }: Props) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-
-  // ─── Email / Password ──────────────────────────────────────
 
   const handleEmailAuth = async () => {
     if (!email.trim()) {
@@ -80,12 +77,9 @@ export default function AuthScreen({ onSuccess }: Props) {
     }
   };
 
-  // ─── Google OAuth ──────────────────────────────────────────
-
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      // Build the redirect URL — this is what Google sends the user back to
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: "sacra",
         path: "auth/callback",
@@ -101,14 +95,9 @@ export default function AuthScreen({ onSuccess }: Props) {
 
       if (error) throw error;
 
-      // Open the Google sign-in page in a browser
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url!,
-        redirectUrl,
-      );
+      const result = await WebBrowser.openAuthSessionAsync(data.url!, redirectUrl);
 
       if (result.type === "success") {
-        // Extract the session from the URL Supabase redirected back to
         const url = result.url;
         const params = new URLSearchParams(
           url.split("#")[1] || url.split("?")[1] || "",
@@ -124,7 +113,6 @@ export default function AuthScreen({ onSuccess }: Props) {
           if (sessionError) throw sessionError;
           onSuccess();
         } else {
-          // Session may already be set via deep link — check
           const { data: sessionData } = await supabase.auth.getSession();
           if (sessionData.session) {
             onSuccess();
@@ -132,20 +120,13 @@ export default function AuthScreen({ onSuccess }: Props) {
             Alert.alert("Sign In Incomplete", "Please try again.");
           }
         }
-      } else if (result.type === "cancel") {
-        // User cancelled — do nothing
       }
     } catch (err: any) {
-      Alert.alert(
-        "Google Sign In Failed",
-        err.message || "Something went wrong.",
-      );
+      Alert.alert("Google Sign In Failed", err.message || "Something went wrong.");
     } finally {
       setGoogleLoading(false);
     }
   };
-
-  // ─── Render ────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={s.container}>
@@ -160,36 +141,30 @@ export default function AuthScreen({ onSuccess }: Props) {
         >
           {/* Header */}
           <View style={s.header}>
-            <Text style={s.eyebrow}>SACRA</Text>
+            <Text style={s.wordmark}>SACRA</Text>
             <Text style={s.title}>
-              {mode === "signin" ? "Welcome\nBack" : "Join\nSACRA"}
+              {mode === "signin" ? "Welcome back" : "Join SACRA"}
             </Text>
-            <View style={s.ornament}>
-              <View style={s.ornLine} />
-              <Text style={s.ornDia}>✦</Text>
-              <Text style={s.ornDia}>◆</Text>
-              <Text style={s.ornDia}>✦</Text>
-              <View style={s.ornLine} />
-            </View>
             <Text style={s.sub}>
               {mode === "signin"
-                ? "Sign in to save prayers, build your sacred collection, and track your listening history"
-                : "Create an account to save prayers across devices, build personal collections, and more"}
+                ? "Sign in to save prayers and build your sacred collection."
+                : "Create an account to save prayers across devices."}
             </Text>
           </View>
 
-          {/* Google Sign In */}
+          {/* Google button */}
           <TouchableOpacity
             style={[s.googleBtn, googleLoading && { opacity: 0.6 }]}
             onPress={handleGoogleSignIn}
             disabled={googleLoading}
+            activeOpacity={0.85}
           >
             {googleLoading ? (
-              <ActivityIndicator color={theme.colors.ink} />
+              <ActivityIndicator color={C.text} />
             ) : (
               <>
                 <Text style={s.googleIcon}>G</Text>
-                <Text style={s.googleText}>Continue with Google</Text>
+                <Text style={s.googleTxt}>Continue with Google</Text>
               </>
             )}
           </TouchableOpacity>
@@ -197,51 +172,50 @@ export default function AuthScreen({ onSuccess }: Props) {
           {/* Divider */}
           <View style={s.divider}>
             <View style={s.divLine} />
-            <Text style={s.divText}>or</Text>
+            <Text style={s.divTxt}>or</Text>
             <View style={s.divLine} />
           </View>
 
           {/* Email form */}
           <View style={s.form}>
-            <Text style={s.label}>EMAIL ADDRESS</Text>
+            <Text style={s.fieldLabel}>Email address</Text>
             <TextInput
               style={s.input}
               value={email}
               onChangeText={setEmail}
               placeholder="your@email.com"
-              placeholderTextColor={theme.colors.parchmentMuted}
+              placeholderTextColor={C.text3}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="next"
+              selectionColor={C.accent}
             />
 
-            <Text style={s.label}>PASSWORD</Text>
+            <Text style={[s.fieldLabel, { marginTop: 16 }]}>Password</Text>
             <TextInput
               style={s.input}
               value={password}
               onChangeText={setPassword}
-              placeholder={
-                mode === "signup"
-                  ? "Choose a password (6+ characters)"
-                  : "••••••••"
-              }
-              placeholderTextColor={theme.colors.parchmentMuted}
+              placeholder={mode === "signup" ? "Choose a password (6+ chars)" : "••••••••"}
+              placeholderTextColor={C.text3}
               secureTextEntry
               returnKeyType="done"
               onSubmitEditing={handleEmailAuth}
+              selectionColor={C.accent}
             />
 
             <TouchableOpacity
               style={[s.emailBtn, loading && { opacity: 0.6 }]}
               onPress={handleEmailAuth}
               disabled={loading}
+              activeOpacity={0.85}
             >
               {loading ? (
-                <ActivityIndicator color={theme.colors.ink} />
+                <ActivityIndicator color={C.onacc} />
               ) : (
-                <Text style={s.emailBtnText}>
-                  {mode === "signin" ? "✦ Sign In" : "✦ Create Account"}
+                <Text style={s.emailBtnTxt}>
+                  {mode === "signin" ? "Sign in" : "Create account"}
                 </Text>
               )}
             </TouchableOpacity>
@@ -256,18 +230,18 @@ export default function AuthScreen({ onSuccess }: Props) {
               setPassword("");
             }}
           >
-            <Text style={s.switchText}>
+            <Text style={s.switchTxt}>
               {mode === "signin"
-                ? "Don't have an account? Create one →"
-                : "Already have an account? Sign in →"}
+                ? "No account? Create one →"
+                : "Have an account? Sign in →"}
             </Text>
           </TouchableOpacity>
 
-          {/* Skip — user can use app without account */}
+          {/* Skip */}
           <TouchableOpacity style={s.skipBtn} onPress={onSuccess}>
-            <Text style={s.skipText}>Continue without signing in</Text>
+            <Text style={s.skipTxt}>Continue without signing in</Text>
             <Text style={s.skipSub}>
-              You can still browse and listen — sign in later to save prayers
+              Browse and listen freely — sign in anytime to save prayers
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -277,127 +251,134 @@ export default function AuthScreen({ onSuccess }: Props) {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink },
-  scroll: { flexGrow: 1, padding: 28, paddingTop: 20, paddingBottom: 40 },
-  header: { alignItems: "center", marginBottom: 32 },
-  eyebrow: {
-    fontFamily: "System",
-    fontSize: 9,
-    letterSpacing: 4,
-    color: theme.colors.gold,
-    textTransform: "uppercase",
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: "900",
-    color: theme.colors.parchment,
-    textAlign: "center",
-    lineHeight: 44,
+  container: { flex: 1, backgroundColor: C.bg },
+  scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
+
+  header: { marginBottom: 36 },
+  wordmark: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 38,
+    color: C.text,
+    letterSpacing: 2,
     marginBottom: 16,
   },
-  ornament: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    width: 180,
-    marginBottom: 14,
+  title: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 40,
+    lineHeight: 40,
+    color: C.text,
+    marginBottom: 12,
+    letterSpacing: -0.5,
   },
-  ornLine: { flex: 1, height: 1, backgroundColor: theme.colors.goldBorder },
-  ornDia: { fontSize: 10, color: theme.colors.gold },
   sub: {
-    fontSize: 13,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 300,
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 18,
+    lineHeight: 27,
+    color: C.text2,
   },
+
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    backgroundColor: theme.colors.parchment,
-    padding: 15,
-    marginBottom: 24,
+    gap: 11,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingVertical: 15,
+    marginBottom: 22,
   },
-  googleIcon: { fontSize: 16, fontWeight: "900", color: "#4285F4" },
-  googleText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.colors.ink,
-    letterSpacing: 0.5,
+  googleIcon: {
+    fontSize: 16,
+    fontFamily: "HankenGrotesk_700Bold",
+    color: "#4285F4",
   },
+  googleTxt: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 15,
+    color: C.text,
+  },
+
   divider: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 22,
   },
-  divLine: { flex: 1, height: 1, backgroundColor: theme.colors.goldBorder },
-  divText: {
-    fontFamily: "System",
+  divLine: { flex: 1, height: 1, backgroundColor: C.line },
+  divTxt: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 12,
+    color: C.text3,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+
+  form: {},
+  fieldLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
     fontSize: 11,
-    color: theme.colors.dust,
     letterSpacing: 1,
     textTransform: "uppercase",
-  },
-  form: { gap: 2 },
-  label: {
-    fontFamily: "System",
-    fontSize: 9,
-    letterSpacing: 3,
-    color: theme.colors.gold,
-    textTransform: "uppercase",
-    marginBottom: 6,
-    marginTop: 14,
+    color: C.text3,
+    marginBottom: 9,
   },
   input: {
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.parchment,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 14,
-    fontSize: 15,
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    fontFamily: "HankenGrotesk_400Regular",
+    fontSize: 17,
+    color: C.text,
   },
+
   emailBtn: {
-    backgroundColor: theme.colors.gold,
-    padding: 16,
+    backgroundColor: C.accent,
+    paddingVertical: 16,
+    borderRadius: 999,
     alignItems: "center",
-    marginTop: 24,
+    marginTop: 22,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  emailBtnText: {
-    fontSize: 13,
-    color: theme.colors.ink,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textTransform: "uppercase",
+  emailBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 16,
+    color: C.onacc,
   },
-  switchBtn: { alignItems: "center", marginTop: 20, padding: 8 },
-  switchText: {
-    fontSize: 13,
-    color: theme.colors.parchmentDim,
-    fontStyle: "italic",
+
+  switchBtn: { alignItems: "center", marginTop: 22, padding: 8 },
+  switchTxt: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 14,
+    color: C.accent2,
   },
+
   skipBtn: {
     alignItems: "center",
-    marginTop: 16,
-    padding: 8,
+    marginTop: 20,
+    paddingTop: 22,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.goldBorder,
-    paddingTop: 20,
+    borderTopColor: C.line,
+    gap: 6,
   },
-  skipText: {
-    fontSize: 12,
-    color: theme.colors.dust,
-    letterSpacing: 1,
-    marginBottom: 4,
+  skipTxt: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 14,
+    color: C.text2,
   },
   skipSub: {
-    fontSize: 11,
-    color: theme.colors.parchmentMuted,
-    fontStyle: "italic",
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 14,
+    color: C.text3,
     textAlign: "center",
+    lineHeight: 21,
   },
 });

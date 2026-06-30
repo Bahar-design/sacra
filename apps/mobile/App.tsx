@@ -7,11 +7,27 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { Text, StatusBar } from "react-native";
+import { Text, StatusBar, View, ActivityIndicator } from "react-native";
 import { Session } from "@supabase/supabase-js";
+import { useFonts } from "expo-font";
+import {
+  HankenGrotesk_400Regular,
+  HankenGrotesk_500Medium,
+  HankenGrotesk_600SemiBold,
+  HankenGrotesk_700Bold,
+  HankenGrotesk_800ExtraBold,
+} from "@expo-google-fonts/hanken-grotesk";
+import {
+  InstrumentSerif_400Regular,
+  InstrumentSerif_400Regular_Italic,
+} from "@expo-google-fonts/instrument-serif";
+import {
+  Newsreader_400Regular,
+  Newsreader_400Regular_Italic,
+} from "@expo-google-fonts/newsreader";
 import { initOfflineDB } from "./src/lib/offlineStorage";
 import { supabase } from "./src/lib/supabase";
-import { theme } from "./src/theme";
+import { C } from "./src/theme";
 import HomeScreen from "./src/screens/HomeScreen";
 import ListenScreen from "./src/screens/ListenScreen";
 import SearchScreen from "./src/screens/SearchScreen";
@@ -24,7 +40,6 @@ import AuthScreen from "./src/screens/AuthScreen";
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Each tab wraps its screen in a Stack so it can push to PrayerDetail
 function ListenStack(): React.ReactElement {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -59,28 +74,41 @@ function HomeStack(): React.ReactElement {
   );
 }
 
-// Tab bar needs insets so it sits above the Android gesture bar
+// Floating glass tab bar — sits 18px off the bottom with rounded corners
 function MainTabs(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const tabBarBottom = 18 + insets.bottom;
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
+          position: "absolute",
+          bottom: tabBarBottom,
+          left: 18,
+          right: 18,
+          height: 66,
+          borderRadius: 24,
+          backgroundColor: "rgba(255,255,255,0.92)",
           borderTopWidth: 1,
-          borderTopColor: theme.colors.goldBorder,
-          height: 60 + insets.bottom,
-          paddingBottom: insets.bottom + 8,
+          borderWidth: 1,
+          borderColor: C.hair,
+          elevation: 12,
+          shadowColor: C.shadow,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 1,
+          shadowRadius: 24,
         },
-        tabBarActiveTintColor: theme.colors.gold,
-        tabBarInactiveTintColor: theme.colors.parchmentMuted,
+        tabBarActiveTintColor: C.accent,
+        tabBarInactiveTintColor: C.text3,
         tabBarLabelStyle: {
-          fontFamily: "System",
-          fontSize: 9,
-          letterSpacing: 1,
-          textTransform: "uppercase",
+          fontFamily: "HankenGrotesk_700Bold",
+          fontSize: 10,
+          letterSpacing: 0.2,
+          marginTop: -2,
         },
+        tabBarItemStyle: { paddingTop: 10 },
       }}
     >
       <Tab.Screen
@@ -88,7 +116,7 @@ function MainTabs(): React.ReactElement {
         component={HomeStack}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 18 }}>✦</Text>
+            <Text style={{ color, fontSize: 20, lineHeight: 22 }}>✦</Text>
           ),
         }}
       />
@@ -96,8 +124,12 @@ function MainTabs(): React.ReactElement {
         name="Listen"
         component={ListenStack}
         options={{
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 18 }}>◎</Text>
+          tabBarIcon: ({ color, size }) => (
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 2, height: 20 }}>
+              {[8, 14, 20, 14, 8].map((h, i) => (
+                <View key={i} style={{ width: 2.5, height: h, backgroundColor: color, borderRadius: 2 }} />
+              ))}
+            </View>
           ),
         }}
       />
@@ -106,7 +138,7 @@ function MainTabs(): React.ReactElement {
         component={SearchStack}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 18 }}>⊕</Text>
+            <Text style={{ color, fontSize: 19, lineHeight: 22 }}>⊙</Text>
           ),
         }}
       />
@@ -115,7 +147,7 @@ function MainTabs(): React.ReactElement {
         component={ProfileStack}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 18 }}>◆</Text>
+            <Text style={{ color, fontSize: 18, lineHeight: 22 }}>◆</Text>
           ),
         }}
       />
@@ -129,56 +161,62 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
+  const [fontsLoaded] = useFonts({
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    HankenGrotesk_700Bold,
+    HankenGrotesk_800ExtraBold,
+    InstrumentSerif_400Regular,
+    InstrumentSerif_400Regular_Italic,
+    Newsreader_400Regular,
+    Newsreader_400Regular_Italic,
+  });
+
   useEffect(() => {
     initOfflineDB();
 
-    // Get existing session on startup
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      // If no session, show auth screen after splash
       if (!session) setShowAuth(true);
       setAuthReady(true);
     });
 
-    // Listen for sign-in / sign-out events
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (!session) {
-        // User signed out — show auth screen again
-        setShowAuth(true);
-      }
+      if (!session) setShowAuth(true);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleSplashFinish = () => {
-    setSplashDone(true);
-  };
+  const handleSplashFinish = () => setSplashDone(true);
+  const handleAuthSuccess = () => setShowAuth(false);
 
-  const handleAuthSuccess = () => {
-    setShowAuth(false);
-  };
+  // Wait for fonts before showing anything meaningful
+  if (!fontsLoaded && splashDone) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={C.accent} />
+        </View>
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor={theme.colors.ink}
-        />
+        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
 
-        {/* 1. Splash screen — always shows first for 2.8 seconds */}
         {!splashDone && <SplashScreen onFinish={handleSplashFinish} />}
 
-        {/* 2. Auth screen — shows after splash if user is not signed in */}
         {splashDone && authReady && showAuth && (
           <AuthScreen onSuccess={handleAuthSuccess} />
         )}
 
-        {/* 3. Main app — shows after auth (or after skipping auth) */}
         {splashDone && authReady && !showAuth && (
           <NavigationContainer>
             <MainTabs />

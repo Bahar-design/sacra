@@ -8,231 +8,315 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../theme";
+import { C } from "../theme";
 import { PrayerAPI } from "../lib/api";
-import { getUser } from "../lib/supabase";
 import { trackCommunitySubmitted } from "../lib/analytics";
 
 export default function CommunitySubmitScreen({ navigation }: any) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [religion, setReligion] = useState("");
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const validate = (): string | null => {
+    if (!title.trim()) return "Title is required.";
+    if (body.trim().length < 20) return "Prayer text must be at least 20 characters.";
+    return null;
+  };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !body.trim()) {
-      Alert.alert("Required", "Title and prayer text are required.");
-      return;
-    }
-    if (body.trim().length < 20) {
-      Alert.alert("Too Short", "Prayer text must be at least 20 characters.");
+    const err = validate();
+    if (err) {
+      Alert.alert("Check your entry", err);
       return;
     }
     setLoading(true);
     try {
-      const { data: ud } = await getUser();
       await PrayerAPI.submitCommunity({
         title: title.trim(),
         body: body.trim(),
+        religion: religion.trim() || undefined,
         source: source.trim() || undefined,
-        user_id: ud.user?.id,
       });
-      trackCommunitySubmitted();
-      setSubmitted(true);
-    } catch (err: any) {
-      Alert.alert(
-        "Error",
-        err?.response?.data?.error || "Submission failed. Please try again.",
-      );
+      setSuccess(true);
+      trackCommunitySubmitted({ title, religion });
+    } catch (e: any) {
+      const msg = e?.response?.data?.error ?? "Submission failed. Please try again.";
+      Alert.alert("Submission error", msg);
     } finally {
       setLoading(false);
     }
   };
 
-  if (submitted)
+  if (success) {
     return (
-      <SafeAreaView
-        style={[
-          s.container,
-          { justifyContent: "center", alignItems: "center" },
-        ]}
-      >
-        <Text style={s.successSym}>◆</Text>
-        <Text style={s.successTitle}>Submitted</Text>
-        <Text style={s.successBody}>
-          Your prayer has been submitted for review. If approved, it will be
-          embedded and added to SACRA's sacred collection for all faiths to
-          discover.
+      <SafeAreaView style={[s.container, { justifyContent: "center", alignItems: "center" }]} edges={["top"]}>
+        <Text style={s.successIcon}>✦</Text>
+        <Text style={s.successTitle}>Received with gratitude</Text>
+        <Text style={s.successSub}>
+          Your prayer has been submitted for blessing and will join the collection soon.
         </Text>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={s.backBtnTxt}>← Return to SACRA</Text>
+        <TouchableOpacity
+          style={s.doneBtn}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.85}
+        >
+          <Text style={s.doneBtnTxt}>Return to sanctuary</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
+  }
 
   return (
-    <SafeAreaView style={s.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 60 }}>
-        <TouchableOpacity
-          style={{ padding: 20 }}
-          onPress={() => navigation.goBack()}
+    <SafeAreaView style={s.container} edges={["top"]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={s.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={{ fontSize: 16, color: theme.colors.gold }}>←</Text>
-        </TouchableOpacity>
-        <View style={s.header}>
-          <Text style={s.eyebrow}>COMMUNITY</Text>
-          <Text style={s.heading}>Contribute a Prayer</Text>
-          <Text style={s.sub}>
-            Share a sacred text from any faith tradition. All submissions are
-            reviewed before being added to the collection.
+          {/* Header */}
+          <View style={s.headerRow}>
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Text style={s.backBtnTxt}>←</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={s.eyebrow}>Community</Text>
+          <Text style={s.heading}>Offer a prayer</Text>
+          <Text style={s.description}>
+            Share a prayer from your tradition. It will be reviewed and, if authentic, added to the sacred collection.
           </Text>
-        </View>
-        <View style={s.form}>
-          <Text style={s.lbl}>PRAYER TITLE *</Text>
-          <TextInput
-            style={s.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="e.g. The Serenity Prayer"
-            placeholderTextColor={theme.colors.parchmentMuted}
-          />
-          <Text style={s.lbl}>PRAYER TEXT *</Text>
-          <TextInput
-            style={[s.input, s.area]}
-            value={body}
-            onChangeText={setBody}
-            placeholder="Enter the full text of the prayer..."
-            placeholderTextColor={theme.colors.parchmentMuted}
-            multiline
-            numberOfLines={8}
-            textAlignVertical="top"
-          />
-          <Text style={s.count}>{body.length} characters (minimum 20)</Text>
-          <Text style={s.lbl}>SOURCE CITATION</Text>
-          <TextInput
-            style={s.input}
-            value={source}
-            onChangeText={setSource}
-            placeholder="e.g. Alcoholics Anonymous Big Book, p. 59"
-            placeholderTextColor={theme.colors.parchmentMuted}
-          />
-          <Text style={s.hint}>
-            Including a source citation increases approval chances. Only public
-            domain or openly licensed texts are accepted.
-          </Text>
+
+          {/* Form */}
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Title *</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Name of the prayer"
+              placeholderTextColor={C.text3}
+              value={title}
+              onChangeText={setTitle}
+              selectionColor={C.accent}
+            />
+          </View>
+
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Prayer text *</Text>
+            <TextInput
+              style={[s.input, s.textArea]}
+              placeholder="Enter the full prayer here…"
+              placeholderTextColor={C.text3}
+              value={body}
+              onChangeText={setBody}
+              multiline
+              textAlignVertical="top"
+              selectionColor={C.accent}
+            />
+            <Text style={s.charCount}>{body.length} characters</Text>
+          </View>
+
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Religion / tradition</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. Buddhism, Islam, Christianity…"
+              placeholderTextColor={C.text3}
+              value={religion}
+              onChangeText={setReligion}
+              selectionColor={C.accent}
+            />
+          </View>
+
+          <View style={s.fieldGroup}>
+            <Text style={s.fieldLabel}>Source</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Book name, URL, or oral tradition"
+              placeholderTextColor={C.text3}
+              value={source}
+              onChangeText={setSource}
+              selectionColor={C.accent}
+            />
+          </View>
+
+          {/* Submit */}
           <TouchableOpacity
-            style={[s.submitBtn, loading && { opacity: 0.5 }]}
+            style={s.submitBtn}
             onPress={handleSubmit}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color={theme.colors.ink} />
+              <ActivityIndicator color={C.onacc} />
             ) : (
-              <Text style={s.submitTxt}>✦ Submit for Review</Text>
+              <Text style={s.submitBtnTxt}>Submit for blessing ✦</Text>
             )}
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+
+          <Text style={s.disclaimer}>
+            Submissions are reviewed for authenticity before being added to the collection.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink },
-  header: { padding: 20, paddingTop: 0 },
+  container: { flex: 1, backgroundColor: C.bg },
+  scroll: { paddingHorizontal: 22, paddingBottom: 60 },
+
+  headerRow: { paddingTop: 14, marginBottom: 20 },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backBtnTxt: {
+    fontSize: 17,
+    color: C.text2,
+  },
+
   eyebrow: {
-    fontSize: 9,
-    letterSpacing: 4,
-    color: theme.colors.gold,
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    marginBottom: 4,
+    color: C.text3,
+    marginBottom: 6,
   },
   heading: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 10,
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 40,
+    lineHeight: 40,
+    color: C.text,
+    letterSpacing: -0.5,
+    marginBottom: 12,
   },
-  sub: {
-    fontSize: 14,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    lineHeight: 21,
+  description: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 19,
+    lineHeight: 28,
+    color: C.text2,
+    marginBottom: 30,
   },
-  form: { padding: 20, paddingTop: 0 },
-  lbl: {
-    fontSize: 9,
-    letterSpacing: 3,
-    color: theme.colors.gold,
+
+  fieldGroup: { marginBottom: 20 },
+  fieldLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 11,
+    letterSpacing: 1,
     textTransform: "uppercase",
-    marginBottom: 8,
-    marginTop: 20,
+    color: C.text3,
+    marginBottom: 9,
   },
   input: {
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.parchment,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 14,
-    fontSize: 14,
-    fontStyle: "italic",
+    borderColor: C.line,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+    fontFamily: "HankenGrotesk_400Regular",
+    fontSize: 17,
+    color: C.text,
   },
-  area: { height: 160, textAlignVertical: "top" },
-  count: {
-    fontSize: 10,
-    color: theme.colors.dust,
+  textArea: {
+    minHeight: 160,
+    paddingTop: 13,
+  },
+  charCount: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 11,
+    color: C.text3,
     marginTop: 6,
     textAlign: "right",
   },
-  hint: {
-    fontSize: 11,
-    color: theme.colors.dust,
-    fontStyle: "italic",
-    marginTop: 8,
-    lineHeight: 17,
-  },
+
   submitBtn: {
-    backgroundColor: theme.colors.gold,
-    padding: 16,
+    backgroundColor: C.accent,
+    paddingVertical: 17,
+    borderRadius: 999,
     alignItems: "center",
-    marginTop: 32,
+    marginTop: 10,
+    marginBottom: 18,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  submitTxt: {
-    fontSize: 13,
-    color: theme.colors.ink,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textTransform: "uppercase",
+  submitBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 16,
+    color: C.onacc,
+    letterSpacing: 0.4,
   },
-  successSym: { fontSize: 48, color: theme.colors.gold, marginBottom: 16 },
-  successTitle: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 12,
-  },
-  successBody: {
-    fontSize: 15,
-    color: theme.colors.dust,
-    fontStyle: "italic",
+
+  disclaimer: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 14,
+    color: C.text3,
     textAlign: "center",
-    lineHeight: 23,
-    maxWidth: 300,
-    marginBottom: 32,
+    lineHeight: 21,
+    paddingHorizontal: 20,
   },
-  backBtn: {
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 14,
+
+  // Success state
+  successIcon: {
+    fontSize: 48,
+    color: C.accent,
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 38,
+    color: C.text,
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  successSub: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 19,
+    color: C.text2,
+    textAlign: "center",
+    lineHeight: 29,
     paddingHorizontal: 32,
+    marginBottom: 36,
   },
-  backBtnTxt: {
-    fontSize: 12,
-    color: theme.colors.gold,
-    letterSpacing: 2,
-    textTransform: "uppercase",
+  doneBtn: {
+    backgroundColor: C.accent,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 999,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  doneBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 16,
+    color: C.onacc,
   },
 });

@@ -45,10 +45,9 @@ Accept if: it appears to be a genuine prayer, mantra, blessing, or sacred verse 
       try {
         result = JSON.parse(responseText);
       } catch {
-        result = {
-          valid: true,
-          reason: "Could not parse validation — defaulting to pending",
-        };
+        // Unparseable response (e.g. prompt injection) — treat as untrusted,
+        // fall through to the outer catch which queues as pending.
+        throw new Error("Validation response could not be parsed");
       }
 
       if (!result.valid) {

@@ -1,4 +1,3 @@
-// apps/mobile/src/screens/HomeScreen.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -10,23 +9,15 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../theme";
+import { C, getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
 
-const RELIGION_ICONS: Record<string, string> = {
-  Christianity: "✝",
-  Islam: "☪",
-  Judaism: "✡",
-  Hinduism: "🕉",
-  Buddhism: "☸",
-  Sikhism: "☬",
-  Bahai: "✷",
-  Zoroastrianism: "𓄂𓆃",
-  Jainism: "🪬",
-  Taoism: "☯",
-  Shinto: "⛩",
-  "Indigenous / Animist": "𖦏",
-};
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function HomeScreen({ navigation }: any) {
   const [prayers, setPrayers] = useState<any[]>([]);
@@ -70,16 +61,18 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  const filterByReligion = async (religionId: string, name: string) => {
+  const filterByReligion = async (religionId: string) => {
     const next = activeRel === religionId ? "" : religionId;
     setActiveRel(next);
     setLoading(true);
     try {
       const res = await PrayerAPI.list({
         religion_id: next || undefined,
-        limit: 20,
+        limit: 50,
       });
       setPrayers(res.data.data || []);
+      setPage(1);
+      setHasMore((res.data.data || []).length === 50);
     } catch (e) {
       console.error(e);
     } finally {
@@ -87,116 +80,257 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  return (
-    <SafeAreaView style={s.container}>
-      {/* Header */}
-      <View style={s.header}>
-        <Text style={s.eyebrow}>SACRA</Text>
-        <Text style={s.heading}>Discover</Text>
-        <Text style={s.sub}>Sacred texts from every faith on earth</Text>
-      </View>
+  const featured = prayers[0];
+  const listPrayers = prayers.slice(1);
+  const relName = (item: any) => item.religions?.name ?? "";
 
-      {/* Religion filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.chips}
-        style={s.chipsScroll}
+  const renderItem = ({ item }: { item: any }) => {
+    const name = relName(item);
+    const color = getReligionColor(name);
+    const tint = getReligionTint(name);
+    const icon = getReligionIcon(name);
+    return (
+      <TouchableOpacity
+        style={s.card}
+        activeOpacity={0.75}
+        onPress={() => navigation.navigate("PrayerDetail", { prayer: item })}
       >
-        {religions.map((r) => (
-          <TouchableOpacity
-            key={r.id}
-            style={[s.chip, activeRel === r.id && s.chipOn]}
-            onPress={() => filterByReligion(r.id, r.name)}
-          >
-            <Text style={s.chipIcon}>{RELIGION_ICONS[r.name] || "◆"}</Text>
-            <Text style={[s.chipText, activeRel === r.id && s.chipTextOn]}>
-              {r.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        <View style={[s.iconBox, { backgroundColor: tint }]}>
+          <Text style={[s.iconText, { color }]}>{icon}</Text>
+        </View>
+        <View style={s.cardBody}>
+          <View style={s.cardMeta}>
+            <Text style={[s.cardRel, { color }]}>{name}</Text>
+            {item.language ? (
+              <Text style={s.cardLang}>· {item.language}</Text>
+            ) : null}
+          </View>
+          <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={s.cardExcerpt} numberOfLines={1}>{item.body}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-      {/* Gold ornament divider */}
-      <View style={s.divider}>
-        <View style={s.divLine} />
-        <Text style={s.divDia}>◆</Text>
-        <View style={s.divLine} />
-      </View>
+  return (
+    <SafeAreaView style={s.container} edges={["top"]}>
+      <FlatList
+        data={listPrayers}
+        keyExtractor={(i) => i.id}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        contentContainerStyle={{ paddingBottom: 110 }}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            {/* Header */}
+            <View style={s.header}>
+              <Text style={s.greeting}>{getGreeting()}</Text>
+              <Text style={s.heading}>Today's prayers</Text>
+            </View>
 
-      {loading ? (
-        <ActivityIndicator
-          color={theme.colors.gold}
-          style={{ marginTop: 40 }}
-        />
-      ) : (
-        <FlatList
-          data={prayers}
-          keyExtractor={(i) => i.id}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator
-                color={theme.colors.gold}
-                style={{ margin: 20 }}
-              />
-            ) : null
-          }
-          contentContainerStyle={{ paddingBottom: 40 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={s.card}
-              onPress={() =>
-                navigation.navigate("PrayerDetail", { prayer: item })
-              }
+            {/* Featured card */}
+            {featured && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={s.featured}
+                onPress={() =>
+                  navigation.navigate("PrayerDetail", { prayer: featured })
+                }
+              >
+                {/* Aurora tint overlay */}
+                <View style={s.auroraOverlay} />
+                <View style={s.featuredInner}>
+                  <View style={s.featMeta}>
+                    <View
+                      style={[
+                        s.featDot,
+                        { backgroundColor: getReligionColor(relName(featured)) },
+                      ]}
+                    />
+                    <Text style={s.featLabel}>
+                      Prayer of the moment · {relName(featured)}
+                    </Text>
+                  </View>
+                  <Text style={s.featTitle} numberOfLines={2}>
+                    {featured.title}
+                  </Text>
+                  <Text style={s.featExcerpt} numberOfLines={3}>
+                    "{featured.body}"
+                  </Text>
+                  <View style={s.featFooter}>
+                    {featured.source ? (
+                      <Text style={s.featSource} numberOfLines={1}>{featured.source}</Text>
+                    ) : (
+                      <View />
+                    )}
+                    <View style={s.readBtn}>
+                      <Text style={s.readBtnTxt}>Read →</Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Religion filter chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.chips}
+              style={{ marginTop: 22, marginBottom: 6 }}
             >
-              <View style={s.cardTop}>
-                <Text style={s.cardRel}>
-                  {RELIGION_ICONS[item.religions?.name] || "◆"}{" "}
-                  {item.religions?.name}
-                </Text>
-                {item.tradition ? (
-                  <Text style={s.cardTrad}>{item.tradition}</Text>
-                ) : null}
-              </View>
-              <Text style={s.cardTitle}>{item.title}</Text>
-              <Text style={s.cardBody} numberOfLines={3}>
-                {item.body}
-              </Text>
-              {item.source ? (
-                <Text style={s.cardSource}>— {item.source}</Text>
-              ) : null}
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={<Text style={s.empty}>No prayers found.</Text>}
-        />
-      )}
+              {religions.map((r) => {
+                const isOn = activeRel === r.id;
+                const col = getReligionColor(r.name);
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[
+                      s.chip,
+                      isOn && { backgroundColor: col + "22", borderColor: col },
+                    ]}
+                    onPress={() => filterByReligion(r.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.chipIcon}>
+                      {getReligionIcon(r.name)}
+                    </Text>
+                    <Text style={[s.chipText, isOn && { color: col, fontFamily: "HankenGrotesk_700Bold" }]}>
+                      {r.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Section label */}
+            <Text style={s.sectionLabel}>The collection</Text>
+
+            {loading && (
+              <ActivityIndicator
+                color={C.accent}
+                style={{ marginTop: 40, marginBottom: 20 }}
+              />
+            )}
+          </>
+        }
+        renderItem={renderItem}
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator color={C.accent} style={{ margin: 24 }} />
+          ) : null
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <Text style={s.empty}>No prayers found.</Text>
+          ) : null
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.ink },
-  header: { padding: 20, paddingBottom: 12 },
-  eyebrow: {
-    fontFamily: "System",
-    fontSize: 9,
-    letterSpacing: 4,
-    color: theme.colors.gold,
+  container: { flex: 1, backgroundColor: C.bg },
+
+  header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 22 },
+  greeting: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 0.4,
+    color: C.accent,
+    marginBottom: 6,
     textTransform: "uppercase",
-    marginBottom: 4,
   },
   heading: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: theme.colors.parchment,
-    marginBottom: 4,
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 42,
+    lineHeight: 40,
+    color: C.text,
+    letterSpacing: -0.5,
   },
-  sub: { fontSize: 13, color: theme.colors.dust, fontStyle: "italic" },
-  chipsScroll: { maxHeight: 48, marginBottom: 4 },
+
+  // Featured card
+  featured: {
+    marginHorizontal: 22,
+    borderRadius: 26,
+    backgroundColor: C.surface,
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
+    overflow: "hidden",
+  },
+  auroraOverlay: {
+    position: "absolute",
+    inset: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(226,85,61,0.09)",
+    opacity: 0.85,
+  },
+  featuredInner: { padding: 22 },
+  featMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    marginBottom: 16,
+  },
+  featDot: { width: 9, height: 9, borderRadius: 5 },
+  featLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: C.text2,
+  },
+  featTitle: {
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 34,
+    lineHeight: 36,
+    color: C.text,
+    marginBottom: 12,
+  },
+  featExcerpt: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 20,
+    lineHeight: 29,
+    color: C.text2,
+    marginBottom: 20,
+  },
+  featFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  featSource: {
+    fontFamily: "HankenGrotesk_600SemiBold",
+    fontSize: 12,
+    color: C.text3,
+    flex: 1,
+    marginRight: 12,
+  },
+  readBtn: {
+    backgroundColor: C.accent,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  readBtnTxt: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 13,
+    color: C.onacc,
+  },
+
+  // Filter chips
   chips: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     gap: 8,
     flexDirection: "row",
     alignItems: "center",
@@ -204,73 +338,83 @@ const s = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    borderColor: C.line,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: C.surface,
   },
-  chipOn: {
-    backgroundColor: theme.colors.goldDim,
-    borderColor: theme.colors.gold,
-  },
-  chipIcon: { fontSize: 12 },
+  chipIcon: { fontSize: 13 },
   chipText: {
-    fontSize: 10,
-    color: theme.colors.parchmentDim,
-    fontFamily: "System",
-    letterSpacing: 0.5,
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 12,
+    color: C.text2,
   },
-  chipTextOn: { color: theme.colors.gold },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 20,
-    marginVertical: 14,
-    gap: 10,
-  },
-  divLine: { flex: 1, height: 1, backgroundColor: theme.colors.goldBorder },
-  divDia: { fontSize: 10, color: theme.colors.gold },
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.goldBorder,
-    padding: 16,
-    marginHorizontal: 20,
-    marginBottom: 12,
-  },
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+
+  sectionLabel: {
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: C.text3,
+    marginHorizontal: 22,
+    marginTop: 24,
     marginBottom: 6,
   },
+
+  // Prayer list cards
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.hair,
+  },
+  iconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  iconText: { fontSize: 19 },
+  cardBody: { flex: 1, minWidth: 0 },
+  cardMeta: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3 },
   cardRel: {
-    fontSize: 9,
-    color: theme.colors.gold,
-    letterSpacing: 2,
+    fontFamily: "HankenGrotesk_700Bold",
+    fontSize: 10.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
-  cardTrad: { fontSize: 9, color: theme.colors.dust, fontStyle: "italic" },
+  cardLang: {
+    fontFamily: "HankenGrotesk_500Medium",
+    fontSize: 10.5,
+    color: C.text3,
+  },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: theme.colors.parchment,
-    marginBottom: 6,
+    fontFamily: "InstrumentSerif_400Regular",
+    fontSize: 23,
+    lineHeight: 25,
+    color: C.text,
+    marginBottom: 3,
   },
-  cardBody: {
-    fontSize: 13,
-    color: theme.colors.parchmentDim,
-    lineHeight: 19,
-    fontStyle: "italic",
-    marginBottom: 6,
+  cardExcerpt: {
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 16.5,
+    lineHeight: 22,
+    color: C.text2,
   },
-  cardSource: { fontSize: 10, color: theme.colors.dust, letterSpacing: 1 },
+
   empty: {
     textAlign: "center",
-    color: theme.colors.dust,
+    color: C.text3,
     marginTop: 60,
-    fontSize: 14,
-    fontStyle: "italic",
+    fontSize: 16,
+    fontFamily: "Newsreader_400Regular_Italic",
   },
 });
