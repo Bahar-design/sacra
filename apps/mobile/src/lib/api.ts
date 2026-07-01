@@ -4,6 +4,20 @@ const BASE = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3001";
 export const WS_BASE =
   process.env.EXPO_PUBLIC_API_WS_URL || "ws://localhost:3001";
 
+// Module-level cache so we only fetch religions once per session
+let _religionsCache: Record<string, string> | null = null;
+
+export async function getReligionsMap(): Promise<Record<string, string>> {
+  if (_religionsCache) return _religionsCache;
+  const res = await PrayerAPI.getReligions();
+  const map: Record<string, string> = {};
+  (res.data.data || []).forEach((r: any) => {
+    map[r.id] = r.name;
+  });
+  _religionsCache = map;
+  return map;
+}
+
 export const api = axios.create({
   baseURL: BASE,
   timeout: 15000,

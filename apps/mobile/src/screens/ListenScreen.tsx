@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,18 +9,26 @@ import {
 } from "react-native";
 import {
   useAudioRecorder,
+  useAudioRecorderState,
   AudioQuality,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from "expo-audio";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C, getReligionColor, getReligionIcon } from "../theme";
-import { PrayerAPI } from "../lib/api";
+import { useTheme } from "../lib/ThemeContext";
+import { getReligionColor, getReligionIcon } from "../theme";
+import { PrayerAPI, getReligionsMap } from "../lib/api";
 import { trackListen } from "../lib/analytics";
 import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
 const BARS = 24;
+
+// Stable per-bar amplitude multipliers so each bar varies independently
+const BAR_MULTIPLIERS = Array.from(
+  { length: BARS },
+  (_, i) => 0.4 + (Math.sin(i * 1.3) * 0.5 + 0.5) * 0.9,
+);
 
 const MATCHING_STEPS = [
   "Transcribing…",
@@ -30,80 +38,130 @@ const MATCHING_STEPS = [
 ];
 
 export default function ListenScreen({ navigation }: any) {
+  const { C } = useTheme();
   const [state, setState] = useState<State>("idle");
   const [results, setResults] = useState<any[]>([]);
   const [transcript, setTranscript] = useState("");
+  const [visibleTranscript, setVisibleTranscript] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [matchingStep, setMatchingStep] = useState(MATCHING_STEPS[0]);
+  const [religionsMap, setReligionsMap] = useState<Record<string, string>>({});
 
-  const recorder = useAudioRecorder({
-    extension: ".m4a",
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 128000,
-    android: { outputFormat: "mpeg4", audioEncoder: "aac" },
-    ios: { audioQuality: AudioQuality.HIGH },
-    web: {},
-  } as RecordingOptions);
+  // Fetch religion name lookup once
+  useEffect(() => {
+    getReligionsMap().then(setReligionsMap).catch(console.error);
+  }, []);
+
+  // Typewriter effect when transcript arrives
+  useEffect(() => {
+    if (!transcript) return;
+    setVisibleTranscript("");
+    let idx = 0;
+    const timer = setInterval(() => {
+      idx++;
+      setVisibleTranscript(transcript.slice(0, idx));
+      if (idx >= transcript.length) clearInterval(timer);
+    }, 22);
+    return () => clearInterval(timer);
+  }, [transcript]);
+
+  const recorder = useAudioRecorder(
+    {
+      extension: ".m4a",
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      bitRate: 128000,
+      isMeteringEnabled: true,
+      android: { outputFormat: "mpeg4", audioEncoder: "aac" },
+      ios: { audioQuality: AudioQuality.HIGH },
+      web: {},
+    } as RecordingOptions,
+  );
+
+  // Reactive recorder state — updates every 80ms including metering
+  const recorderState = useAudioRecorderState(recorder, 80);
 
   const waves = useRef(
-    Array.from({ length: BARS }, () => new Animated.Value(0.2)),
+    Array.from({ length: BARS }, () => new Animated.Value(0.08)),
   ).current;
-  const waveLoop = useRef<Animated.CompositeAnimation | null>(null);
-  const spinAnim = useRef(new Animated.Value(0)).current;
   const pingAnim = useRef(new Animated.Value(0.65)).current;
   const ping2Anim = useRef(new Animated.Value(0.65)).current;
+  const spinAnim = useRef(new Animated.Value(0)).current;
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingLoopRef = useRef<any>(null);
+  const ping2LoopRef = useRef<any>(null);
+  const spinLoopRef = useRef<any>(null);
 
-  const startWave = () => {
-    waveLoop.current = Animated.loop(
-      Animated.stagger(
-        40,
-        waves.map((a) =>
-          Animated.sequence([
-            Animated.timing(a, {
-              toValue: Math.random() * 0.8 + 0.2,
-              duration: 180 + Math.random() * 280,
-              useNativeDriver: false,
-            }),
-            Animated.timing(a, {
-              toValue: 0.15,
-              duration: 180 + Math.random() * 280,
-              useNativeDriver: false,
-            }),
-          ]),
-        ),
-      ),
-    );
-    waveLoop.current.start();
+  // Amplitude-responsive waveform during recording
+  useEffect(() => {
+    if (!recorderState.isRecording) return;
+    const metering = recorderState.metering;
+    if (metering === undefined || metering === null) return;
 
-    // Ping rings
-    Animated.loop(
+    // Convert dBFS (typically -60 to 0) to 0–1 range
+    const normalized = Math.max(0, Math.min(1, (metering + 60) / 60));
+
+    waves.forEach((wave, i) => {
+      const target = Math.max(0.06, normalized * BAR_MULTIPLIERS[i]);
+      Animated.timing(wave, {
+        toValue: target,
+        duration: 80,
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [recorderState.metering, recorderState.isRecording]);
+
+  const startPingRings = () => {
+    pingLoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.timing(pingAnim, { toValue: 2, duration: 2400, useNativeDriver: true }),
         Animated.timing(pingAnim, { toValue: 0.65, duration: 0, useNativeDriver: true }),
       ]),
-    ).start();
-    Animated.loop(
+    );
+    pingLoopRef.current.start();
+
+    ping2LoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.delay(1200),
         Animated.timing(ping2Anim, { toValue: 2, duration: 2400, useNativeDriver: true }),
         Animated.timing(ping2Anim, { toValue: 0.65, duration: 0, useNativeDriver: true }),
       ]),
-    ).start();
+    );
+    ping2LoopRef.current.start();
   };
 
-  const stopWave = () => {
-    waveLoop.current?.stop();
-    waves.forEach((a) => a.setValue(0.15));
-    pingAnim.stopAnimation();
-    ping2Anim.stopAnimation();
+  const stopPingRings = () => {
+    pingLoopRef.current?.stop();
+    ping2LoopRef.current?.stop();
+    pingAnim.setValue(0.65);
+    ping2Anim.setValue(0.65);
   };
 
-  const startSpinner = () => {
-    Animated.loop(
+  const animateBarsToIdle = () => {
+    waves.forEach((a) => {
+      Animated.timing(a, { toValue: 0.08, duration: 300, useNativeDriver: false }).start();
+    });
+  };
+
+  // Processing spin animation with cycling bars
+  const startProcessingAnim = () => {
+    spinLoopRef.current = Animated.loop(
       Animated.timing(spinAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-    ).start();
+    );
+    spinLoopRef.current.start();
+
+    // Gentle sine wave on bars during processing
+    waves.forEach((a, i) => {
+      const phaseDelay = i * 55;
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(phaseDelay),
+          Animated.timing(a, { toValue: 0.35, duration: 600, useNativeDriver: false }),
+          Animated.timing(a, { toValue: 0.08, duration: 600, useNativeDriver: false }),
+        ]),
+      ).start();
+    });
+
     let idx = 0;
     stepTimer.current = setInterval(() => {
       idx = (idx + 1) % MATCHING_STEPS.length;
@@ -111,10 +169,11 @@ export default function ListenScreen({ navigation }: any) {
     }, 1200);
   };
 
-  const stopSpinner = () => {
-    spinAnim.stopAnimation();
+  const stopProcessingAnim = () => {
+    spinLoopRef.current?.stop();
     spinAnim.setValue(0);
     if (stepTimer.current) clearInterval(stepTimer.current);
+    animateBarsToIdle();
   };
 
   const startRecording = async () => {
@@ -130,8 +189,9 @@ export default function ListenScreen({ navigation }: any) {
       recorder.record();
       setResults([]);
       setTranscript("");
+      setVisibleTranscript("");
       setState("recording");
-      startWave();
+      startPingRings();
     } catch {
       setErrorMsg("Failed to start recording. Please try again.");
       setState("error");
@@ -140,9 +200,10 @@ export default function ListenScreen({ navigation }: any) {
 
   const stopAndProcess = async () => {
     if (state !== "recording") return;
-    stopWave();
+    stopPingRings();
+    animateBarsToIdle();
     setState("processing");
-    startSpinner();
+    startProcessingAnim();
     try {
       await recorder.stop();
       const uri = recorder.uri;
@@ -150,19 +211,22 @@ export default function ListenScreen({ navigation }: any) {
       const res = await PrayerAPI.listen(uri);
       setTranscript(res.data.transcription);
       setResults(res.data.matches || []);
-      stopSpinner();
+      stopProcessingAnim();
       setState("results");
       trackListen({
         matched: (res.data.matches?.length ?? 0) > 0,
         similarity: res.data.top_match?.similarity,
       });
     } catch (err: any) {
-      stopSpinner();
+      stopProcessingAnim();
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message;
-      const clientMsg = serverMsg
-        ?? (err?.code === "ECONNABORTED" ? "Processing timed out. Try a shorter recording."
-          : err?.message === "Network Error" ? "Cannot reach server. Check your connection."
-          : err?.message ?? "Could not process audio. Please try again.");
+      const clientMsg =
+        serverMsg ??
+        (err?.code === "ECONNABORTED"
+          ? "Processing timed out. Try a shorter recording."
+          : err?.message === "Network Error"
+            ? "Cannot reach server. Check your connection."
+            : err?.message ?? "Could not process audio. Please try again.");
       setErrorMsg(clientMsg);
       setState("error");
     }
@@ -172,7 +236,9 @@ export default function ListenScreen({ navigation }: any) {
     setState("idle");
     setResults([]);
     setTranscript("");
+    setVisibleTranscript("");
     setErrorMsg("");
+    animateBarsToIdle();
   };
 
   const spin = spinAnim.interpolate({
@@ -181,6 +247,11 @@ export default function ListenScreen({ navigation }: any) {
   });
 
   const topResult = results[0];
+
+  const relName = (item: any) =>
+    item.religions?.name ?? religionsMap[item.religion_id] ?? "";
+
+  const s = useMemo(() => makeStyles(C), [C]);
 
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
@@ -196,27 +267,20 @@ export default function ListenScreen({ navigation }: any) {
         {/* Transcript / Headline area */}
         <View style={s.transcriptArea}>
           {state === "idle" && (
-            <Text style={s.headline}>
-              Hold up to{"\n"}a prayer
-            </Text>
+            <Text style={s.headline}>Hold up to{"\n"}a prayer</Text>
           )}
           {state === "recording" && (
             <Text style={s.transcript}>
-              Listening…{" "}
-              <Text style={{ color: C.accent3 }}>|</Text>
+              Listening… <Text style={{ color: C.accent3 }}>|</Text>
             </Text>
           )}
           {state === "processing" && (
             <Text style={s.transcript}>
-              {transcript
-                ? `"${transcript}"`
-                : "Processing your recording…"}
+              {matchingStep}
             </Text>
           )}
-          {state === "results" && transcript ? (
-            <Text style={s.transcript}>
-              "{transcript}"
-            </Text>
+          {state === "results" && visibleTranscript ? (
+            <Text style={s.transcript}>"{visibleTranscript}"</Text>
           ) : null}
           {state === "error" && (
             <Text style={[s.transcript, { color: C.accent }]}>{errorMsg}</Text>
@@ -225,33 +289,19 @@ export default function ListenScreen({ navigation }: any) {
 
         {/* Waveform stage */}
         <View style={s.waveStage}>
-          {/* Halo glow */}
-          <View
-            style={[
-              s.halo,
-              { opacity: state === "recording" ? 0.7 : 0.2 },
-            ]}
-          />
+          <View style={[s.halo, { opacity: state === "recording" ? 0.7 : 0.15 }]} />
 
-          {/* Ping rings when recording */}
           {state === "recording" && (
             <>
               <Animated.View
-                style={[
-                  s.pingRing,
-                  { borderColor: C.accent, transform: [{ scale: pingAnim }], opacity: 0.35 },
-                ]}
+                style={[s.pingRing, { borderColor: C.accent, transform: [{ scale: pingAnim }], opacity: 0.35 }]}
               />
               <Animated.View
-                style={[
-                  s.pingRing,
-                  { borderColor: C.accent2, transform: [{ scale: ping2Anim }], opacity: 0.35 },
-                ]}
+                style={[s.pingRing, { borderColor: C.accent2, transform: [{ scale: ping2Anim }], opacity: 0.3 }]}
               />
             </>
           )}
 
-          {/* Waveform bars */}
           <View style={s.waveform}>
             {waves.map((a, i) => (
               <Animated.View
@@ -261,16 +311,18 @@ export default function ListenScreen({ navigation }: any) {
                   {
                     height: a.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [4, state === "recording" ? 90 : 20],
+                      outputRange: [4, state === "recording" ? 100 : 28],
                     }),
                     opacity: a.interpolate({
-                      inputRange: [0.15, 1],
-                      outputRange: [0.25, 0.9],
+                      inputRange: [0.06, 1],
+                      outputRange: [0.2, 0.95],
                     }),
                     backgroundColor:
-                      state === "recording" ? C.accent
-                      : state === "processing" ? C.accent2
-                      : C.line,
+                      state === "recording"
+                        ? C.accent
+                        : state === "processing"
+                          ? C.accent2
+                          : C.line,
                   },
                 ]}
               />
@@ -299,14 +351,10 @@ export default function ListenScreen({ navigation }: any) {
           {state === "recording" && (
             <>
               <View style={s.listeningRow}>
-                <View style={s.listeningDot} />
-                <Text style={s.listeningTxt}>Listening</Text>
+                <View style={[s.listeningDot, { backgroundColor: C.accent }]} />
+                <Text style={[s.listeningTxt, { color: C.accent }]}>Listening</Text>
               </View>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={stopAndProcess}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={s.cancelBtn} onPress={stopAndProcess} activeOpacity={0.7}>
                 <Text style={s.cancelTxt}>Tap to stop</Text>
               </TouchableOpacity>
             </>
@@ -315,9 +363,9 @@ export default function ListenScreen({ navigation }: any) {
           {state === "processing" && (
             <View style={s.matchingRow}>
               <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <Text style={s.spinnerIcon}>↻</Text>
+                <Text style={[s.spinnerIcon, { color: C.accent2 }]}>↻</Text>
               </Animated.View>
-              <Text style={s.matchingTxt}>{matchingStep}</Text>
+              <Text style={[s.matchingTxt, { color: C.accent2 }]}>{matchingStep}</Text>
             </View>
           )}
 
@@ -329,18 +377,16 @@ export default function ListenScreen({ navigation }: any) {
 
           {state === "results" && (
             <View style={{ width: "100%" }}>
-              {/* Match badge */}
               {topResult && (
                 <View style={s.matchBadge}>
-                  <Text style={s.matchBadgeTxt}>
+                  <Text style={[s.matchBadgeTxt, { color: C.accent3, backgroundColor: C.accent3 + "28" }]}>
                     Matched · {(topResult.similarity * 100).toFixed(0)}%
                   </Text>
                 </View>
               )}
 
-              {/* Results cards */}
               {results.map((m, i) => {
-                const name = m.religions?.name ?? "";
+                const name = relName(m);
                 const color = getReligionColor(name);
                 const icon = getReligionIcon(name);
                 return (
@@ -348,14 +394,17 @@ export default function ListenScreen({ navigation }: any) {
                     key={m.id}
                     style={s.resultCard}
                     activeOpacity={0.8}
-                    onPress={() => navigation.navigate("PrayerDetail", { prayer: m })}
+                    onPress={() =>
+                      navigation.navigate("PrayerDetail", {
+                        prayer: { ...m, religions: { name } },
+                      })
+                    }
                   >
-                    {/* Accent top line */}
                     <View style={[s.resultTopLine, { backgroundColor: i === 0 ? C.accent : C.line }]} />
                     <View style={s.resultMeta}>
                       <View style={[s.resultDot, { backgroundColor: color }]} />
                       <Text style={[s.resultRel, { color }]}>
-                        {icon} {name} · {m.language || ""}
+                        {icon} {name}{m.language ? ` · ${m.language}` : ""}
                       </Text>
                     </View>
                     <Text style={s.resultTitle}>{m.title}</Text>
@@ -380,237 +429,165 @@ export default function ListenScreen({ navigation }: any) {
 const HALO_SIZE = 260;
 const RING_SIZE = 150;
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  scroll: { flexGrow: 1, paddingBottom: 110, paddingHorizontal: 22 },
+function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["C"]) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.bg },
+    scroll: { flexGrow: 1, paddingBottom: 110, paddingHorizontal: 22 },
 
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 16,
-    marginBottom: 6,
-  },
-  eyebrow: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 12,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: C.text3,
-  },
+    headerRow: { paddingTop: 16, marginBottom: 6 },
+    eyebrow: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 12,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: C.text3,
+    },
 
-  transcriptArea: {
-    minHeight: 118,
-    justifyContent: "flex-end",
-    paddingBottom: 0,
-    marginTop: 10,
-  },
-  headline: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 38,
-    lineHeight: 40,
-    color: C.text,
-    letterSpacing: -0.5,
-  },
-  transcript: {
-    fontFamily: "Newsreader_400Regular",
-    fontSize: 27,
-    lineHeight: 36,
-    color: C.text2,
-  },
+    transcriptArea: { minHeight: 118, justifyContent: "flex-end", marginTop: 10 },
+    headline: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 38,
+      lineHeight: 40,
+      color: C.text,
+      letterSpacing: -0.5,
+    },
+    transcript: {
+      fontFamily: "Newsreader_400Regular",
+      fontSize: 27,
+      lineHeight: 36,
+      color: C.text2,
+    },
 
-  // Waveform stage
-  waveStage: {
-    height: 230,
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 6,
-    position: "relative",
-  },
-  halo: {
-    position: "absolute",
-    width: HALO_SIZE,
-    height: HALO_SIZE,
-    borderRadius: HALO_SIZE / 2,
-    backgroundColor: C.accent,
-    opacity: 0.18,
-  },
-  pingRing: {
-    position: "absolute",
-    width: RING_SIZE,
-    height: RING_SIZE,
-    borderRadius: RING_SIZE / 2,
-    borderWidth: 1.5,
-  },
-  waveform: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    height: 100,
-    width: 330,
-    justifyContent: "center",
-  },
-  bar: {
-    width: 3,
-    borderRadius: 2,
-  },
+    waveStage: {
+      height: 230,
+      alignItems: "center",
+      justifyContent: "center",
+      marginVertical: 6,
+    },
+    halo: {
+      position: "absolute",
+      width: HALO_SIZE,
+      height: HALO_SIZE,
+      borderRadius: HALO_SIZE / 2,
+      backgroundColor: C.accent,
+    },
+    pingRing: {
+      position: "absolute",
+      width: RING_SIZE,
+      height: RING_SIZE,
+      borderRadius: RING_SIZE / 2,
+      borderWidth: 1.5,
+    },
+    waveform: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      height: 110,
+      justifyContent: "center",
+    },
+    bar: { width: 3.5, borderRadius: 2 },
 
-  // Controls
-  controls: {
-    alignItems: "center",
-    flex: 1,
-    paddingTop: 6,
-  },
-  mainBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    backgroundColor: C.accent,
-    paddingVertical: 18,
-    paddingHorizontal: 32,
-    borderRadius: 999,
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  mainBtnIcon: { fontSize: 19 },
-  mainBtnTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 16,
-    color: C.onacc,
-  },
-  idleSub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 17,
-    color: C.text3,
-    textAlign: "center",
-    marginTop: 18,
-    lineHeight: 25,
-    maxWidth: 250,
-  },
+    controls: { alignItems: "center", flex: 1, paddingTop: 6 },
+    mainBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 11,
+      backgroundColor: C.accent,
+      paddingVertical: 18,
+      paddingHorizontal: 32,
+      borderRadius: 999,
+      shadowColor: C.accent,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.5,
+      shadowRadius: 18,
+      elevation: 8,
+    },
+    mainBtnIcon: { fontSize: 19 },
+    mainBtnTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 16, color: C.onacc },
+    idleSub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 17,
+      color: C.text3,
+      textAlign: "center",
+      marginTop: 18,
+      lineHeight: 25,
+      maxWidth: 250,
+    },
 
-  listeningRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  listeningDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: C.accent,
-  },
-  listeningTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 13,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: C.accent,
-  },
-  cancelBtn: {
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: 999,
-    paddingVertical: 11,
-    paddingHorizontal: 22,
-  },
-  cancelTxt: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 13,
-    color: C.text3,
-  },
+    listeningRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+    listeningDot: { width: 9, height: 9, borderRadius: 5 },
+    listeningTxt: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 13,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+    },
+    cancelBtn: {
+      marginTop: 16,
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: 999,
+      paddingVertical: 11,
+      paddingHorizontal: 22,
+    },
+    cancelTxt: { fontFamily: "HankenGrotesk_600SemiBold", fontSize: 13, color: C.text3 },
 
-  matchingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  spinnerIcon: {
-    fontSize: 18,
-    color: C.accent2,
-  },
-  matchingTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 13,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: C.accent2,
-  },
+    matchingRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+    spinnerIcon: { fontSize: 18 },
+    matchingTxt: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 13,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+    },
 
-  matchBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  matchBadgeTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: C.accent3,
-    backgroundColor: C.accent3 + "28",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-  },
+    matchBadge: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 14 },
+    matchBadgeTxt: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+    },
 
-  resultCard: {
-    borderRadius: 24,
-    backgroundColor: C.surface,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 4,
-    padding: 22,
-    marginBottom: 12,
-    overflow: "hidden",
-  },
-  resultTopLine: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-  },
-  resultMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    marginBottom: 11,
-  },
-  resultDot: { width: 9, height: 9, borderRadius: 5 },
-  resultRel: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  resultTitle: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 30,
-    lineHeight: 32,
-    color: C.text,
-    marginBottom: 9,
-  },
-  resultExcerpt: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 18,
-    lineHeight: 26,
-    color: C.text2,
-  },
+    resultCard: {
+      borderRadius: 24,
+      backgroundColor: C.surface,
+      shadowColor: C.shadow,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 1,
+      shadowRadius: 20,
+      elevation: 4,
+      padding: 22,
+      marginBottom: 12,
+      overflow: "hidden",
+    },
+    resultTopLine: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
+    resultMeta: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 11 },
+    resultDot: { width: 9, height: 9, borderRadius: 5 },
+    resultRel: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+    },
+    resultTitle: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 30,
+      lineHeight: 32,
+      color: C.text,
+      marginBottom: 9,
+    },
+    resultExcerpt: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 18,
+      lineHeight: 26,
+      color: C.text2,
+    },
 
-  againBtn: {
-    alignSelf: "center",
-    marginTop: 16,
-  },
-  againTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 13,
-    color: C.text3,
-  },
-});
+    againBtn: { alignSelf: "center", marginTop: 16 },
+    againTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 13, color: C.text3 },
+  });
+}

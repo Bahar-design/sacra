@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { C, getReligionColor, getReligionIcon } from "../theme";
+import { useTheme } from "../lib/ThemeContext";
+import { getReligionColor, getReligionIcon } from "../theme";
 import { supabase } from "../lib/supabase";
-import { getAllOfflinePrayers, removeFromDevice } from "../lib/offlineStorage";
+import { getAllOfflinePrayers, removeFromDevice, clearAllOfflinePrayers } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
+  const { C, isDark, toggleTheme } = useTheme();
   const [saved, setSaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -27,24 +29,27 @@ export default function ProfileScreen({ navigation }: any) {
           setIsGuest(false);
         } else {
           setIsGuest(true);
+          // Guests see no saved prayers
+          setSaved([]);
         }
       });
     }, []),
   );
 
   const handleSignOut = () => {
-    Alert.alert(
-      "Sign out",
-      "Are you sure you want to sign out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign out",
-          style: "destructive",
-          onPress: () => supabase.auth.signOut(),
+    Alert.alert("Sign out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign out",
+        style: "destructive",
+        onPress: async () => {
+          // Clear local prayer cache before signing out
+          clearAllOfflinePrayers();
+          setSaved([]);
+          await supabase.auth.signOut();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleRemove = (id: string) => {
@@ -52,12 +57,9 @@ export default function ProfileScreen({ navigation }: any) {
     setSaved((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const initials = userEmail
-    ? userEmail.slice(0, 2).toUpperCase()
-    : "GU";
+  const initials = userEmail ? userEmail.slice(0, 2).toUpperCase() : "GU";
 
   const renderSaved = ({ item }: { item: any }) => {
-    // Offline prayers from SQLite have flat `religion` string, not nested `religions.name`
     const name = item.religion ?? item.religions?.name ?? "";
     const color = getReligionColor(name);
     const icon = getReligionIcon(name);
@@ -70,10 +72,16 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={[s.savedBar, { backgroundColor: color }]} />
         <View style={s.savedBody}>
           <View style={s.savedMeta}>
-            <Text style={[s.savedRel, { color }]}>{icon} {name}</Text>
+            <Text style={[s.savedRel, { color }]}>
+              {icon} {name}
+            </Text>
           </View>
-          <Text style={s.savedTitle} numberOfLines={2}>{item.title}</Text>
-          <Text style={s.savedExcerpt} numberOfLines={1}>{item.body}</Text>
+          <Text style={s.savedTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={s.savedExcerpt} numberOfLines={1}>
+            {item.body}
+          </Text>
         </View>
         <TouchableOpacity
           style={s.removeBtn}
@@ -86,6 +94,8 @@ export default function ProfileScreen({ navigation }: any) {
     );
   };
 
+  const s = useMemo(() => makeStyles(C), [C]);
+
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
       <FlatList
@@ -95,10 +105,22 @@ export default function ProfileScreen({ navigation }: any) {
         contentContainerStyle={{ paddingBottom: 110 }}
         ListHeaderComponent={
           <>
-            {/* Header eyebrow */}
+            {/* Header */}
             <View style={s.header}>
-              <Text style={s.eyebrow}>Sacred</Text>
-              <Text style={s.heading}>Your sanctuary</Text>
+              <View style={s.headerRow}>
+                <View>
+                  <Text style={s.eyebrow}>Sacred</Text>
+                  <Text style={s.heading}>Your sanctuary</Text>
+                </View>
+                {/* Dark / light mode toggle */}
+                <TouchableOpacity
+                  style={s.themeToggle}
+                  onPress={toggleTheme}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.themeIcon}>{isDark ? "☀" : "☽"}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Avatar + account */}
@@ -111,10 +133,20 @@ export default function ProfileScreen({ navigation }: any) {
                   {isGuest ? "Browsing as guest" : (userEmail ?? "")}
                 </Text>
                 <Text style={s.accountSub}>
-                  {saved.length} prayer{saved.length !== 1 ? "s" : ""} saved offline
+                  {isGuest
+                    ? "Sign in to save prayers across devices"
+                    : `${saved.length} prayer${saved.length !== 1 ? "s" : ""} saved offline`}
                 </Text>
               </View>
-              {!isGuest && (
+              {isGuest ? (
+                <TouchableOpacity
+                  style={s.signInBtn}
+                  onPress={() => navigation.navigate("Auth")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.signInTxt}>Sign in</Text>
+                </TouchableOpacity>
+              ) : (
                 <TouchableOpacity
                   style={s.signOutBtn}
                   onPress={handleSignOut}
@@ -125,36 +157,61 @@ export default function ProfileScreen({ navigation }: any) {
               )}
             </View>
 
-            {/* Stats */}
-            <View style={s.statsRow}>
-              <View style={s.statCard}>
-                <Text style={s.statNum}>{saved.length}</Text>
-                <Text style={s.statLabel}>Saved</Text>
+            {/* Stats — only for signed-in users */}
+            {!isGuest && (
+              <View style={s.statsRow}>
+                <View style={s.statCard}>
+                  <Text style={s.statNum}>{saved.length}</Text>
+                  <Text style={s.statLabel}>Saved</Text>
+                </View>
+                <View style={s.statCard}>
+                  <Text style={s.statNum}>
+                    {
+                      [
+                        ...new Set(
+                          saved
+                            .map((p) => p.religion ?? p.religions?.name)
+                            .filter(Boolean),
+                        ),
+                      ].length
+                    }
+                  </Text>
+                  <Text style={s.statLabel}>Traditions</Text>
+                </View>
+                <View style={s.statCard}>
+                  <Text style={s.statNum}>
+                    {[...new Set(saved.map((p) => p.language).filter(Boolean))].length || "—"}
+                  </Text>
+                  <Text style={s.statLabel}>Languages</Text>
+                </View>
               </View>
-              <View style={s.statCard}>
-                <Text style={s.statNum}>
-                  {[...new Set(saved.map((p) => p.religion ?? p.religions?.name).filter(Boolean))].length}
-                </Text>
-                <Text style={s.statLabel}>Traditions</Text>
-              </View>
-              <View style={s.statCard}>
-                <Text style={s.statNum}>
-                  {[...new Set(saved.map((p) => p.language).filter(Boolean))].length || "—"}
-                </Text>
-                <Text style={s.statLabel}>Languages</Text>
-              </View>
-            </View>
-
-            {/* Saved heading */}
-            {saved.length > 0 && (
-              <Text style={s.sectionLabel}>Kept close</Text>
             )}
 
-            {saved.length === 0 && (
+            {/* Guest empty state */}
+            {isGuest && (
+              <View style={s.guestBox}>
+                <Text style={s.guestTitle}>Your sanctuary awaits</Text>
+                <Text style={s.guestSub}>
+                  Create a free account to save prayers, build your collection, and access them across devices.
+                </Text>
+                <TouchableOpacity
+                  style={s.guestSignInBtn}
+                  onPress={() => navigation.navigate("Auth")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.guestSignInTxt}>Create account or sign in</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Saved heading */}
+            {saved.length > 0 && <Text style={s.sectionLabel}>Kept close</Text>}
+
+            {!isGuest && saved.length === 0 && (
               <View style={s.emptySaved}>
                 <Text style={s.emptyTitle}>Nothing saved yet</Text>
                 <Text style={s.emptySub}>
-                  Hold the heart on any prayer to keep it here, even offline.
+                  Tap the heart on any prayer to keep it here, even offline.
                 </Text>
               </View>
             )}
@@ -179,208 +236,256 @@ export default function ProfileScreen({ navigation }: any) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["C"]) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.bg },
 
-  header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 20 },
-  eyebrow: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 12,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: C.text3,
-    marginBottom: 6,
-  },
-  heading: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 42,
-    lineHeight: 40,
-    color: C.text,
-    letterSpacing: -0.5,
-  },
+    header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 20 },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+    },
+    eyebrow: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 12,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: C.text3,
+      marginBottom: 6,
+    },
+    heading: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 42,
+      lineHeight: 40,
+      color: C.text,
+      letterSpacing: -0.5,
+    },
+    themeToggle: {
+      width: 40,
+      height: 40,
+      borderRadius: 999,
+      backgroundColor: C.surface,
+      borderWidth: 1,
+      borderColor: C.line,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 22,
+    },
+    themeIcon: { fontSize: 17, color: C.text2 },
 
-  accountRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 22,
-    marginBottom: 22,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: C.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    elevation: 4,
-  },
-  avatarText: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 17,
-    color: C.onacc,
-  },
-  accountInfo: { flex: 1, minWidth: 0 },
-  accountEmail: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 15,
-    color: C.text,
-    marginBottom: 3,
-  },
-  accountSub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 14,
-    color: C.text3,
-  },
-  signOutBtn: {
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-  },
-  signOutTxt: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 12,
-    color: C.text2,
-  },
+    accountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 22,
+      marginBottom: 22,
+    },
+    avatar: {
+      width: 50,
+      height: 50,
+      borderRadius: 999,
+      backgroundColor: C.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: C.accent,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.35,
+      shadowRadius: 14,
+      elevation: 4,
+    },
+    avatarText: { fontFamily: "HankenGrotesk_700Bold", fontSize: 17, color: C.onacc },
+    accountInfo: { flex: 1, minWidth: 0 },
+    accountEmail: {
+      fontFamily: "HankenGrotesk_600SemiBold",
+      fontSize: 15,
+      color: C.text,
+      marginBottom: 3,
+    },
+    accountSub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 14,
+      color: C.text3,
+    },
+    signOutBtn: {
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: 999,
+      paddingVertical: 7,
+      paddingHorizontal: 13,
+    },
+    signOutTxt: { fontFamily: "HankenGrotesk_600SemiBold", fontSize: 12, color: C.text2 },
+    signInBtn: {
+      borderWidth: 1,
+      borderColor: C.accent,
+      borderRadius: 999,
+      paddingVertical: 7,
+      paddingHorizontal: 13,
+      backgroundColor: C.accent + "12",
+    },
+    signInTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 12, color: C.accent },
 
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 22,
-    marginBottom: 28,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: C.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: C.line,
-    padding: 14,
-    alignItems: "center",
-  },
-  statNum: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 32,
-    color: C.text,
-    lineHeight: 34,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: C.text3,
-  },
+    statsRow: { flexDirection: "row", gap: 10, paddingHorizontal: 22, marginBottom: 28 },
+    statCard: {
+      flex: 1,
+      backgroundColor: C.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: C.line,
+      padding: 14,
+      alignItems: "center",
+    },
+    statNum: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 32,
+      color: C.text,
+      lineHeight: 34,
+      marginBottom: 4,
+    },
+    statLabel: {
+      fontFamily: "HankenGrotesk_600SemiBold",
+      fontSize: 11,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: C.text3,
+    },
 
-  sectionLabel: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: C.text3,
-    marginHorizontal: 22,
-    marginBottom: 12,
-  },
+    guestBox: {
+      marginHorizontal: 22,
+      marginBottom: 28,
+      backgroundColor: C.surface,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: C.line,
+      padding: 24,
+      alignItems: "center",
+    },
+    guestTitle: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 28,
+      color: C.text,
+      textAlign: "center",
+      marginBottom: 10,
+    },
+    guestSub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 17,
+      color: C.text2,
+      textAlign: "center",
+      lineHeight: 25,
+      marginBottom: 22,
+    },
+    guestSignInBtn: {
+      backgroundColor: C.accent,
+      paddingVertical: 14,
+      paddingHorizontal: 24,
+      borderRadius: 999,
+      shadowColor: C.accent,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.35,
+      shadowRadius: 14,
+      elevation: 4,
+    },
+    guestSignInTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 14, color: C.onacc },
 
-  savedCard: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    backgroundColor: C.surface,
-    borderRadius: 16,
-    marginHorizontal: 22,
-    marginBottom: 10,
-    overflow: "hidden",
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  savedBar: { width: 5 },
-  savedBody: { flex: 1, padding: 14 },
-  savedMeta: { marginBottom: 6 },
-  savedRel: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 10.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  savedTitle: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 22,
-    lineHeight: 24,
-    color: C.text,
-    marginBottom: 4,
-  },
-  savedExcerpt: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 15,
-    lineHeight: 21,
-    color: C.text2,
-  },
-  removeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  removeBtnTxt: { fontSize: 13, color: C.text3 },
+    sectionLabel: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 11,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: C.text3,
+      marginHorizontal: 22,
+      marginBottom: 12,
+    },
 
-  emptySaved: {
-    alignItems: "center",
-    paddingHorizontal: 40,
-    paddingTop: 20,
-    paddingBottom: 30,
-  },
-  emptyTitle: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 28,
-    color: C.text2,
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  emptySub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 17,
-    color: C.text3,
-    textAlign: "center",
-    lineHeight: 25,
-  },
+    savedCard: {
+      flexDirection: "row",
+      alignItems: "stretch",
+      backgroundColor: C.surface,
+      borderRadius: 16,
+      marginHorizontal: 22,
+      marginBottom: 10,
+      overflow: "hidden",
+      shadowColor: C.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 1,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    savedBar: { width: 5 },
+    savedBody: { flex: 1, padding: 14 },
+    savedMeta: { marginBottom: 6 },
+    savedRel: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 10.5,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+    },
+    savedTitle: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 22,
+      lineHeight: 24,
+      color: C.text,
+      marginBottom: 4,
+    },
+    savedExcerpt: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 15,
+      lineHeight: 21,
+      color: C.text2,
+    },
+    removeBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    removeBtnTxt: { fontSize: 13, color: C.text3 },
 
-  contributeCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginHorizontal: 22,
-    marginTop: 20,
-    borderWidth: 1.5,
-    borderColor: C.line,
-    borderStyle: "dashed",
-    borderRadius: 16,
-    padding: 18,
-  },
-  contributeIcon: {
-    fontSize: 24,
-    color: C.text3,
-    width: 30,
-    textAlign: "center",
-  },
-  contributeTxt: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 15,
-    color: C.text,
-    marginBottom: 3,
-  },
-  contributeSub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 14,
-    color: C.text3,
-  },
-});
+    emptySaved: {
+      alignItems: "center",
+      paddingHorizontal: 40,
+      paddingTop: 20,
+      paddingBottom: 30,
+    },
+    emptyTitle: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 28,
+      color: C.text2,
+      textAlign: "center",
+      marginBottom: 10,
+    },
+    emptySub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 17,
+      color: C.text3,
+      textAlign: "center",
+      lineHeight: 25,
+    },
+
+    contributeCta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      marginHorizontal: 22,
+      marginTop: 20,
+      borderWidth: 1.5,
+      borderColor: C.line,
+      borderStyle: "dashed",
+      borderRadius: 16,
+      padding: 18,
+    },
+    contributeIcon: { fontSize: 24, color: C.text3, width: 30, textAlign: "center" },
+    contributeTxt: {
+      fontFamily: "HankenGrotesk_600SemiBold",
+      fontSize: 15,
+      color: C.text,
+      marginBottom: 3,
+    },
+    contributeSub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 14,
+      color: C.text3,
+    },
+  });
+}

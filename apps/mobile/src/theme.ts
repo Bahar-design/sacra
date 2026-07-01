@@ -1,7 +1,7 @@
-// Design tokens from Claude Design — warm editorial light-mode palette
-// with full dark-mode variant and new font system
+// Design tokens from Claude Design
+// Light palette (warm editorial cream) + Dark palette (deep warm black)
 
-export const C = {
+export const lightC = {
   bg: "#FBF7EF",
   bg2: "#F2EAD9",
   surface: "#FFFFFF",
@@ -17,6 +17,28 @@ export const C = {
   onacc: "#FFF6EF",
   shadow: "rgba(70,45,90,0.22)",
 } as const;
+
+export const darkC = {
+  bg: "#0F0C08",
+  bg2: "#1A1510",
+  surface: "#201A12",
+  surface2: "#2A231A",
+  line: "#3A3026",
+  hair: "rgba(255,240,200,0.07)",
+  text: "#F0E8D6",
+  text2: "#9E9080",
+  text3: "#5A5249",
+  accent: "#E2553D",
+  accent2: "#8070C0",
+  accent3: "#2CA892",
+  onacc: "#FFF6EF",
+  shadow: "rgba(0,0,0,0.7)",
+} as const;
+
+export type ColorPalette = typeof lightC;
+
+// Keep C as alias for lightC (used in module-scope places like SplashScreen before context loads)
+export const C = lightC;
 
 export const RELIGION_COLORS: Record<string, string> = {
   Christianity: "#E2553D",
@@ -37,19 +59,19 @@ export const RELIGION_ICONS: Record<string, string> = {
   Christianity: "✝",
   Islam: "☪",
   Judaism: "✡",
-  Hinduism: "🕉",
-  Buddhism: "☸",
+  Hinduism: "ॐ",              // U+0950 Devanagari Om — plain text, no emoji presentation
+  Buddhism: "✿",              // White florette — clean text symbol, well-centered
   Sikhism: "☬",
   Bahai: "✷",
   Zoroastrianism: "𓄂",
-  Jainism: "🪬",
+  Jainism: "∞",               // Infinity symbol — core Jain concept of infinite universes
   Taoism: "☯",
   Shinto: "⛩",
   "Indigenous / Animist": "𖦏",
 };
 
 export function getReligionColor(name: string): string {
-  return RELIGION_COLORS[name] ?? C.accent;
+  return RELIGION_COLORS[name] ?? lightC.accent;
 }
 
 export function getReligionIcon(name: string): string {
@@ -63,22 +85,21 @@ export function getReligionTint(name: string): string {
 
 export const theme = {
   colors: {
-    // kept for any legacy references; new code should use C directly
-    ink: C.bg,
-    surface: C.surface,
-    surface2: C.surface2,
-    parchment: C.text,
-    parchmentDim: C.text2,
-    parchmentMuted: C.text3,
-    gold: C.accent,
-    goldLight: C.accent2,
-    goldDim: C.hair,
-    goldBorder: C.line,
+    ink: lightC.bg,
+    surface: lightC.surface,
+    surface2: lightC.surface2,
+    parchment: lightC.text,
+    parchmentDim: lightC.text2,
+    parchmentMuted: lightC.text3,
+    gold: lightC.accent,
+    goldLight: lightC.accent2,
+    goldDim: lightC.hair,
+    goldBorder: lightC.line,
     goldGlow: "rgba(226,85,61,0.07)",
-    ember: C.accent,
+    ember: lightC.accent,
     emberDim: "rgba(226,85,61,0.12)",
-    sage: C.accent3,
-    dust: C.text3,
+    sage: lightC.accent3,
+    dust: lightC.text3,
   },
   fonts: {
     sans: "HankenGrotesk_400Regular",

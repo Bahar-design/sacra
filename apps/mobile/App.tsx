@@ -1,12 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, StatusBar, View, ActivityIndicator } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import { useFonts } from "expo-font";
@@ -27,7 +24,7 @@ import {
 } from "@expo-google-fonts/newsreader";
 import { initOfflineDB } from "./src/lib/offlineStorage";
 import { supabase } from "./src/lib/supabase";
-import { C } from "./src/theme";
+import { ThemeProvider, useTheme } from "./src/lib/ThemeContext";
 import HomeScreen from "./src/screens/HomeScreen";
 import ListenScreen from "./src/screens/ListenScreen";
 import SearchScreen from "./src/screens/SearchScreen";
@@ -62,6 +59,13 @@ function ProfileStack(): React.ReactElement {
       <Stack.Screen name="ProfileMain" component={ProfileScreen} />
       <Stack.Screen name="PrayerDetail" component={PrayerDetailScreen} />
       <Stack.Screen name="CommunitySubmit" component={CommunitySubmitScreen} />
+      {/* Guests can navigate here from ProfileScreen to sign in */}
+      <Stack.Screen
+        name="Auth"
+        component={({ navigation }: any) => (
+          <AuthScreen onSuccess={() => navigation.goBack()} />
+        )}
+      />
     </Stack.Navigator>
   );
 }
@@ -74,10 +78,14 @@ function HomeStack(): React.ReactElement {
   );
 }
 
-// Floating glass tab bar — sits 18px off the bottom with rounded corners
+// Floating glass tab bar matching Claude Design
 function MainTabs(): React.ReactElement {
+  const { C, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBarBottom = 18 + insets.bottom;
+
+  const tabBg = isDark ? "rgba(28,22,16,0.96)" : "rgba(255,255,255,0.94)";
+  const tabBorder = isDark ? "rgba(255,240,200,0.08)" : C.hair;
 
   return (
     <Tab.Navigator
@@ -90,22 +98,22 @@ function MainTabs(): React.ReactElement {
           right: 18,
           height: 66,
           borderRadius: 24,
-          backgroundColor: "rgba(255,255,255,0.92)",
+          backgroundColor: tabBg,
           borderTopWidth: 1,
           borderWidth: 1,
-          borderColor: C.hair,
-          elevation: 12,
+          borderColor: tabBorder,
+          elevation: 14,
           shadowColor: C.shadow,
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 1,
-          shadowRadius: 24,
+          shadowRadius: 28,
         },
         tabBarActiveTintColor: C.accent,
         tabBarInactiveTintColor: C.text3,
         tabBarLabelStyle: {
           fontFamily: "HankenGrotesk_700Bold",
           fontSize: 10,
-          letterSpacing: 0.2,
+          letterSpacing: 0.3,
           marginTop: -2,
         },
         tabBarItemStyle: { paddingTop: 10 },
@@ -124,10 +132,13 @@ function MainTabs(): React.ReactElement {
         name="Listen"
         component={ListenStack}
         options={{
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color }) => (
             <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 2, height: 20 }}>
-              {[8, 14, 20, 14, 8].map((h, i) => (
-                <View key={i} style={{ width: 2.5, height: h, backgroundColor: color, borderRadius: 2 }} />
+              {[7, 13, 20, 13, 7].map((h, i) => (
+                <View
+                  key={i}
+                  style={{ width: 2.5, height: h, backgroundColor: color, borderRadius: 2 }}
+                />
               ))}
             </View>
           ),
@@ -155,7 +166,9 @@ function MainTabs(): React.ReactElement {
   );
 }
 
-export default function App() {
+// Inner app component — has access to ThemeContext
+function AppContent(): React.ReactElement {
+  const { C, isDark } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -182,9 +195,7 @@ export default function App() {
       setAuthReady(true);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (!session) setShowAuth(true);
     });
@@ -193,35 +204,45 @@ export default function App() {
   }, []);
 
   const handleSplashFinish = () => setSplashDone(true);
-  const handleAuthSuccess = () => setShowAuth(false);
+  const handleAuthSuccess  = () => setShowAuth(false);
 
-  // Wait for fonts before showing anything meaningful
   if (!fontsLoaded && splashDone) {
     return (
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={C.accent} />
-        </View>
-      </GestureHandlerRootView>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg }}>
+        <ActivityIndicator color={C.accent} />
+      </View>
     );
   }
 
   return (
+    <>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={C.bg}
+      />
+
+      {!splashDone && <SplashScreen onFinish={handleSplashFinish} />}
+
+      {splashDone && authReady && showAuth && (
+        <AuthScreen onSuccess={handleAuthSuccess} />
+      )}
+
+      {splashDone && authReady && !showAuth && (
+        <NavigationContainer>
+          <MainTabs />
+        </NavigationContainer>
+      )}
+    </>
+  );
+}
+
+export default function App(): React.ReactElement {
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
-
-        {!splashDone && <SplashScreen onFinish={handleSplashFinish} />}
-
-        {splashDone && authReady && showAuth && (
-          <AuthScreen onSuccess={handleAuthSuccess} />
-        )}
-
-        {splashDone && authReady && !showAuth && (
-          <NavigationContainer>
-            <MainTabs />
-          </NavigationContainer>
-        )}
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

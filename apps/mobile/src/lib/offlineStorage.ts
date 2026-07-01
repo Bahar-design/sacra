@@ -65,3 +65,8 @@ export function searchOffline(query: string): any[] {
     [`%${query}%`, `%${query}%`],
   );
 }
+
+// Clear all saved prayers — called on sign out so the next user starts fresh
+export function clearAllOfflinePrayers() {
+  db.runSync("DELETE FROM offline_prayers");
+}

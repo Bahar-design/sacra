@@ -1,104 +1,86 @@
-import React, { useEffect, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-  Dimensions,
-} from "react-native";
-import { C } from "../theme";
+import { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
+import { lightC } from "../theme";
 
 const { width, height } = Dimensions.get("window");
+
+// Use the light palette directly — splash renders before ThemeContext loads
+const C = lightC;
 
 interface Props {
   onFinish: () => void;
 }
 
-// Floating colored dots matching the Claude Design aurora orb
+// Floating colored specks orbiting the aurora
 const DOTS = [
-  { color: "#3E6FB0", size: 16, left: width / 2 - 80, top: height / 2 - 110 },
-  { color: "#E0A02E", size: 13, left: width / 2 + 60, top: height / 2 - 90 },
-  { color: "#1E8A7F", size: 11, left: width / 2 - 65, top: height / 2 + 70 },
-  { color: "#8E5BA6", size: 15, left: width / 2 + 55, top: height / 2 + 60 },
-  { color: "#C24D52", size: 9, left: width / 2 + 30, top: height / 2 - 130 },
+  { color: "#3E6FB0", size: 14, x: width / 2 - 95, y: height / 2 - 185 },
+  { color: "#E0A02E", size: 10, x: width / 2 + 75, y: height / 2 - 165 },
+  { color: "#1E8A7F", size: 12, x: width / 2 - 75, y: height / 2 + 50 },
+  { color: "#8E5BA6", size: 16, x: width / 2 + 80, y: height / 2 + 30 },
+  { color: "#C24D52", size: 8,  x: width / 2 + 40, y: height / 2 - 220 },
+  { color: "#4A9B6F", size: 11, x: width / 2 - 55, y: height / 2 - 220 },
 ];
 
+const ORB_SIZE = 150;
+const GLOW_SIZE = ORB_SIZE + 70;
+
 export default function SplashScreen({ onFinish }: Props) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.88)).current;
-  const orbScale = useRef(new Animated.Value(1)).current;
-  const exitAnim = useRef(new Animated.Value(1)).current;
-  const dotAnims = useRef(DOTS.map(() => new Animated.Value(0))).current;
+  const fadeAnim   = useRef(new Animated.Value(0)).current;
+  const scaleAnim  = useRef(new Animated.Value(0.9)).current;
+  const orbScale   = useRef(new Animated.Value(1)).current;
+  const exitAnim   = useRef(new Animated.Value(1)).current;
+  const dotAnims   = useRef(DOTS.map(() => new Animated.Value(0))).current;
+  const glowAnim   = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Entrance
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 1100,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 18,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Orb breathe loop
+    // Orb glow pulse (starts immediately)
     Animated.loop(
       Animated.sequence([
-        Animated.timing(orbScale, {
-          toValue: 1.06,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(orbScale, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
+        Animated.timing(orbScale, { toValue: 1.07, duration: 2200, useNativeDriver: true }),
+        Animated.timing(orbScale, { toValue: 1,    duration: 2200, useNativeDriver: true }),
       ]),
     ).start();
 
-    // Floating dot animations — staggered loops
+    // Glow halo breathe
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ]),
+    ).start();
+
+    // Entrance: text fades + springs up
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, tension: 20, friction: 7, useNativeDriver: true }),
+    ]).start();
+
+    // Staggered dot floats
     dotAnims.forEach((anim, i) => {
-      const duration = 2200 + i * 400;
-      const offset = i % 2 === 0 ? -10 : 10;
+      const dur    = 2000 + i * 350;
+      const offset = i % 2 === 0 ? -12 : 12;
       Animated.loop(
         Animated.sequence([
-          Animated.timing(anim, {
-            toValue: offset,
-            duration,
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration,
-            useNativeDriver: true,
-          }),
+          Animated.timing(anim, { toValue: offset, duration: dur, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0,      duration: dur, useNativeDriver: true }),
         ]),
       ).start();
     });
 
-    // Exit after 2.8s
-    const timer = setTimeout(() => {
-      Animated.timing(exitAnim, {
-        toValue: 0,
-        duration: 550,
-        useNativeDriver: true,
-      }).start(() => onFinish());
-    }, 2800);
+    // Exit after 3s
+    const t = setTimeout(() => {
+      Animated.timing(exitAnim, { toValue: 0, duration: 600, useNativeDriver: true }).start(
+        () => onFinish(),
+      );
+    }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, []);
+
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.85] });
 
   return (
     <Animated.View style={[s.container, { opacity: exitAnim }]}>
-      {/* Warm stage gradient approximation */}
-      <View style={s.stage} />
-
       {/* Floating colored dots */}
       {DOTS.map((dot, i) => (
         <Animated.View
@@ -110,28 +92,27 @@ export default function SplashScreen({ onFinish }: Props) {
               height: dot.size,
               borderRadius: dot.size / 2,
               backgroundColor: dot.color,
-              left: dot.left,
-              top: dot.top,
+              left: dot.x,
+              top: dot.y,
               transform: [{ translateY: dotAnims[i] }],
             },
           ]}
         />
       ))}
 
-      {/* Aurora orb */}
-      <Animated.View
-        style={[
-          s.orbWrap,
-          { transform: [{ scale: orbScale }] },
-        ]}
-      >
-        {/* Glow halo */}
-        <View style={s.orbGlow} />
+      {/* Aurora orb — layered colored glows */}
+      <Animated.View style={[s.orbWrap, { transform: [{ scale: orbScale }] }]}>
+        {/* Outer soft glow — terracotta */}
+        <Animated.View style={[s.glowOuter, { opacity: glowOpacity }]} />
+        {/* Mid glow — purple shift */}
+        <View style={s.glowMid} />
+        {/* Accent glow — teal */}
+        <View style={s.glowTeal} />
         {/* Core orb */}
         <View style={s.orb} />
       </Animated.View>
 
-      {/* Text content */}
+      {/* Text block */}
       <Animated.View
         style={[
           s.content,
@@ -140,13 +121,15 @@ export default function SplashScreen({ onFinish }: Props) {
       >
         <Text style={s.title}>SACRA</Text>
         <Text style={s.tagline}>Find any prayer</Text>
-        <Text style={s.sub}>many voices  ·  one light</Text>
       </Animated.View>
+
+      {/* Sub floats at the bottom third */}
+      <Animated.Text style={[s.sub, { opacity: fadeAnim }]}>
+        many voices  ·  one light
+      </Animated.Text>
     </Animated.View>
   );
 }
-
-const ORB_SIZE = 130;
 
 const s = StyleSheet.create({
   container: {
@@ -158,34 +141,45 @@ const s = StyleSheet.create({
     justifyContent: "center",
     zIndex: 999,
   },
-  stage: {
-    position: "absolute",
-    inset: 0,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: C.bg,
-  },
   dot: {
     position: "absolute",
-    opacity: 0.85,
+    opacity: 0.82,
   },
+
+  // Aurora orb positioned above center
   orbWrap: {
     position: "absolute",
-    top: height / 2 - 195,
+    top: height / 2 - 230,
     alignSelf: "center",
     width: ORB_SIZE,
     height: ORB_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
-  orbGlow: {
+  glowOuter: {
     position: "absolute",
-    width: ORB_SIZE + 60,
-    height: ORB_SIZE + 60,
-    borderRadius: (ORB_SIZE + 60) / 2,
-    backgroundColor: "rgba(226,85,61,0.18)",
+    width: GLOW_SIZE + 30,
+    height: GLOW_SIZE + 30,
+    borderRadius: (GLOW_SIZE + 30) / 2,
+    backgroundColor: "rgba(226,85,61,0.22)",
+  },
+  glowMid: {
+    position: "absolute",
+    width: GLOW_SIZE,
+    height: GLOW_SIZE,
+    borderRadius: GLOW_SIZE / 2,
+    backgroundColor: "rgba(92,75,150,0.18)",
+    top: 10,
+    left: 20,
+  },
+  glowTeal: {
+    position: "absolute",
+    width: GLOW_SIZE - 20,
+    height: GLOW_SIZE - 20,
+    borderRadius: (GLOW_SIZE - 20) / 2,
+    backgroundColor: "rgba(30,138,127,0.16)",
+    top: -10,
+    left: -15,
   },
   orb: {
     width: ORB_SIZE,
@@ -194,35 +188,40 @@ const s = StyleSheet.create({
     backgroundColor: C.accent,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.65,
-    shadowRadius: 36,
-    elevation: 16,
+    shadowOpacity: 0.7,
+    shadowRadius: 40,
+    elevation: 20,
   },
+
+  // Text block starts just below screen center
   content: {
-    alignItems: "center",
     position: "absolute",
-    top: height / 2 - 20,
+    top: height / 2 - 10,
+    alignItems: "center",
   },
   title: {
     fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 74,
-    lineHeight: 74,
+    fontSize: 80,
+    lineHeight: 80,
     color: C.text,
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
   tagline: {
     fontFamily: "HankenGrotesk_700Bold",
     fontSize: 12,
-    letterSpacing: 4,
+    letterSpacing: 4.5,
     textTransform: "uppercase",
     color: C.accent,
-    marginTop: 14,
+    marginTop: 16,
   },
+
+  // Floats in the lower portion of the screen
   sub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 17,
-    color: C.text3,
     position: "absolute",
-    top: 160,
+    bottom: height * 0.18,
+    fontFamily: "Newsreader_400Regular_Italic",
+    fontSize: 18,
+    color: C.text3,
+    letterSpacing: 0.3,
   },
 });

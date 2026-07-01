@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
-import { C } from "../theme";
+import { useTheme } from "../lib/ThemeContext";
 import { signIn, signUp, supabase } from "../lib/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -24,6 +24,7 @@ interface Props {
 }
 
 export default function AuthScreen({ onSuccess }: Props) {
+  const { C } = useTheme();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,18 +32,9 @@ export default function AuthScreen({ onSuccess }: Props) {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleEmailAuth = async () => {
-    if (!email.trim()) {
-      Alert.alert("Required", "Please enter your email address.");
-      return;
-    }
-    if (!password.trim()) {
-      Alert.alert("Required", "Please enter a password.");
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert("Too short", "Password must be at least 6 characters.");
-      return;
-    }
+    if (!email.trim()) { Alert.alert("Required", "Please enter your email address."); return; }
+    if (!password.trim()) { Alert.alert("Required", "Please enter a password."); return; }
+    if (password.length < 6) { Alert.alert("Too short", "Password must be at least 6 characters."); return; }
 
     setLoading(true);
     try {
@@ -51,11 +43,9 @@ export default function AuthScreen({ onSuccess }: Props) {
         if (error) {
           Alert.alert("Sign Up Failed", error.message);
         } else {
-          Alert.alert(
-            "Account Created",
-            "You can now sign in with your email and password.",
-            [{ text: "Sign In", onPress: () => setMode("signin") }],
-          );
+          Alert.alert("Account Created", "You can now sign in with your email and password.", [
+            { text: "Sign In", onPress: () => setMode("signin") },
+          ]);
         }
       } else {
         const { error } = await signIn(email.trim(), password);
@@ -80,28 +70,17 @@ export default function AuthScreen({ onSuccess }: Props) {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const redirectUrl = AuthSession.makeRedirectUri({
-        scheme: "sacra",
-        path: "auth/callback",
-      });
-
+      const redirectUrl = AuthSession.makeRedirectUri({ scheme: "sacra", path: "auth/callback" });
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
       });
-
       if (error) throw error;
 
       const result = await WebBrowser.openAuthSessionAsync(data.url!, redirectUrl);
-
       if (result.type === "success") {
         const url = result.url;
-        const params = new URLSearchParams(
-          url.split("#")[1] || url.split("?")[1] || "",
-        );
+        const params = new URLSearchParams(url.split("#")[1] || url.split("?")[1] || "");
         const accessToken = params.get("access_token");
         const refreshToken = params.get("refresh_token");
 
@@ -114,11 +93,8 @@ export default function AuthScreen({ onSuccess }: Props) {
           onSuccess();
         } else {
           const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData.session) {
-            onSuccess();
-          } else {
-            Alert.alert("Sign In Incomplete", "Please try again.");
-          }
+          if (sessionData.session) { onSuccess(); }
+          else { Alert.alert("Sign In Incomplete", "Please try again."); }
         }
       }
     } catch (err: any) {
@@ -127,6 +103,8 @@ export default function AuthScreen({ onSuccess }: Props) {
       setGoogleLoading(false);
     }
   };
+
+  const s = useMemo(() => makeStyles(C), [C]);
 
   return (
     <SafeAreaView style={s.container}>
@@ -177,7 +155,7 @@ export default function AuthScreen({ onSuccess }: Props) {
           </View>
 
           {/* Email form */}
-          <View style={s.form}>
+          <View>
             <Text style={s.fieldLabel}>Email address</Text>
             <TextInput
               style={s.input}
@@ -191,7 +169,6 @@ export default function AuthScreen({ onSuccess }: Props) {
               returnKeyType="next"
               selectionColor={C.accent}
             />
-
             <Text style={[s.fieldLabel, { marginTop: 16 }]}>Password</Text>
             <TextInput
               style={s.input}
@@ -204,7 +181,6 @@ export default function AuthScreen({ onSuccess }: Props) {
               onSubmitEditing={handleEmailAuth}
               selectionColor={C.accent}
             />
-
             <TouchableOpacity
               style={[s.emailBtn, loading && { opacity: 0.6 }]}
               onPress={handleEmailAuth}
@@ -224,25 +200,17 @@ export default function AuthScreen({ onSuccess }: Props) {
           {/* Switch mode */}
           <TouchableOpacity
             style={s.switchBtn}
-            onPress={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
-              setEmail("");
-              setPassword("");
-            }}
+            onPress={() => { setMode(mode === "signin" ? "signup" : "signin"); setEmail(""); setPassword(""); }}
           >
             <Text style={s.switchTxt}>
-              {mode === "signin"
-                ? "No account? Create one →"
-                : "Have an account? Sign in →"}
+              {mode === "signin" ? "No account? Create one →" : "Have an account? Sign in →"}
             </Text>
           </TouchableOpacity>
 
           {/* Skip */}
           <TouchableOpacity style={s.skipBtn} onPress={onSuccess}>
             <Text style={s.skipTxt}>Continue without signing in</Text>
-            <Text style={s.skipSub}>
-              Browse and listen freely — sign in anytime to save prayers
-            </Text>
+            <Text style={s.skipSub}>Browse and listen freely — sign in anytime to save prayers</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -250,135 +218,106 @@ export default function AuthScreen({ onSuccess }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
+function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["C"]) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.bg },
+    scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
 
-  header: { marginBottom: 36 },
-  wordmark: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 38,
-    color: C.text,
-    letterSpacing: 2,
-    marginBottom: 16,
-  },
-  title: {
-    fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 40,
-    lineHeight: 40,
-    color: C.text,
-    marginBottom: 12,
-    letterSpacing: -0.5,
-  },
-  sub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 18,
-    lineHeight: 27,
-    color: C.text2,
-  },
+    header: { marginBottom: 36 },
+    wordmark: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 38,
+      color: C.text,
+      letterSpacing: 2,
+      marginBottom: 16,
+    },
+    title: {
+      fontFamily: "InstrumentSerif_400Regular",
+      fontSize: 40,
+      lineHeight: 40,
+      color: C.text,
+      marginBottom: 12,
+      letterSpacing: -0.5,
+    },
+    sub: { fontFamily: "Newsreader_400Regular_Italic", fontSize: 18, lineHeight: 27, color: C.text2 },
 
-  googleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 11,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: 14,
-    paddingVertical: 15,
-    marginBottom: 22,
-  },
-  googleIcon: {
-    fontSize: 16,
-    fontFamily: "HankenGrotesk_700Bold",
-    color: "#4285F4",
-  },
-  googleTxt: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 15,
-    color: C.text,
-  },
+    googleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 11,
+      backgroundColor: C.surface,
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: 14,
+      paddingVertical: 15,
+      marginBottom: 22,
+    },
+    googleIcon: { fontSize: 16, fontFamily: "HankenGrotesk_700Bold", color: "#4285F4" },
+    googleTxt: { fontFamily: "HankenGrotesk_600SemiBold", fontSize: 15, color: C.text },
 
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 22,
-  },
-  divLine: { flex: 1, height: 1, backgroundColor: C.line },
-  divTxt: {
-    fontFamily: "HankenGrotesk_500Medium",
-    fontSize: 12,
-    color: C.text3,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
+    divider: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 22 },
+    divLine: { flex: 1, height: 1, backgroundColor: C.line },
+    divTxt: {
+      fontFamily: "HankenGrotesk_500Medium",
+      fontSize: 12,
+      color: C.text3,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
 
-  form: {},
-  fieldLabel: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: C.text3,
-    marginBottom: 9,
-  },
-  input: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.line,
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    fontFamily: "HankenGrotesk_400Regular",
-    fontSize: 17,
-    color: C.text,
-  },
+    fieldLabel: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: C.text3,
+      marginBottom: 9,
+    },
+    input: {
+      backgroundColor: C.surface,
+      borderWidth: 1,
+      borderColor: C.line,
+      borderRadius: 14,
+      paddingHorizontal: 15,
+      paddingVertical: 14,
+      fontFamily: "HankenGrotesk_400Regular",
+      fontSize: 17,
+      color: C.text,
+    },
 
-  emailBtn: {
-    backgroundColor: C.accent,
-    paddingVertical: 16,
-    borderRadius: 999,
-    alignItems: "center",
-    marginTop: 22,
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  emailBtnTxt: {
-    fontFamily: "HankenGrotesk_700Bold",
-    fontSize: 16,
-    color: C.onacc,
-  },
+    emailBtn: {
+      backgroundColor: C.accent,
+      paddingVertical: 16,
+      borderRadius: 999,
+      alignItems: "center",
+      marginTop: 22,
+      shadowColor: C.accent,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 16,
+      elevation: 6,
+    },
+    emailBtnTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 16, color: C.onacc },
 
-  switchBtn: { alignItems: "center", marginTop: 22, padding: 8 },
-  switchTxt: {
-    fontFamily: "HankenGrotesk_500Medium",
-    fontSize: 14,
-    color: C.accent2,
-  },
+    switchBtn: { alignItems: "center", marginTop: 22, padding: 8 },
+    switchTxt: { fontFamily: "HankenGrotesk_500Medium", fontSize: 14, color: C.accent2 },
 
-  skipBtn: {
-    alignItems: "center",
-    marginTop: 20,
-    paddingTop: 22,
-    borderTopWidth: 1,
-    borderTopColor: C.line,
-    gap: 6,
-  },
-  skipTxt: {
-    fontFamily: "HankenGrotesk_600SemiBold",
-    fontSize: 14,
-    color: C.text2,
-  },
-  skipSub: {
-    fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 14,
-    color: C.text3,
-    textAlign: "center",
-    lineHeight: 21,
-  },
-});
+    skipBtn: {
+      alignItems: "center",
+      marginTop: 20,
+      paddingTop: 22,
+      borderTopWidth: 1,
+      borderTopColor: C.line,
+      gap: 6,
+    },
+    skipTxt: { fontFamily: "HankenGrotesk_600SemiBold", fontSize: 14, color: C.text2 },
+    skipSub: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 14,
+      color: C.text3,
+      textAlign: "center",
+      lineHeight: 21,
+    },
+  });
+}
