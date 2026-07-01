@@ -19,23 +19,23 @@ export const lightC = {
 } as const;
 
 export const darkC = {
-  bg: "#0F0C08",
-  bg2: "#1A1510",
-  surface: "#201A12",
-  surface2: "#2A231A",
-  line: "#3A3026",
-  hair: "rgba(255,240,200,0.07)",
-  text: "#F0E8D6",
-  text2: "#9E9080",
-  text3: "#5A5249",
-  accent: "#E2553D",
-  accent2: "#8070C0",
-  accent3: "#2CA892",
-  onacc: "#FFF6EF",
-  shadow: "rgba(0,0,0,0.7)",
+  bg: "#141021",
+  bg2: "#1B1530",
+  surface: "#1F1934",
+  surface2: "#282140",
+  line: "#352E4E",
+  hair: "rgba(255,255,255,0.06)",
+  text: "#F4EFE6",
+  text2: "#ABA4BD",
+  text3: "#6E6784",
+  accent: "#FF6E54",
+  accent2: "#9C8BDB",
+  accent3: "#3FB9AC",
+  onacc: "#1A1326",
+  shadow: "rgba(0,0,0,0.72)",
 } as const;
 
-export type ColorPalette = typeof lightC;
+export type ColorPalette = { [K in keyof typeof lightC]: string };
 
 // Keep C as alias for lightC (used in module-scope places like SplashScreen before context loads)
 export const C = lightC;

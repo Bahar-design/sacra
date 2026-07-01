@@ -11,17 +11,16 @@ interface Props {
   onFinish: () => void;
 }
 
-// Floating colored specks orbiting the aurora
+// Five floating colored specks matching Claude Design
 const DOTS = [
-  { color: "#3E6FB0", size: 14, x: width / 2 - 95, y: height / 2 - 185 },
-  { color: "#E0A02E", size: 10, x: width / 2 + 75, y: height / 2 - 165 },
-  { color: "#1E8A7F", size: 12, x: width / 2 - 75, y: height / 2 + 50 },
-  { color: "#8E5BA6", size: 16, x: width / 2 + 80, y: height / 2 + 30 },
-  { color: "#C24D52", size: 8,  x: width / 2 + 40, y: height / 2 - 220 },
-  { color: "#4A9B6F", size: 11, x: width / 2 - 55, y: height / 2 - 220 },
+  { color: "#3E6FB0", size: 16, x: width / 2 - 85, y: height / 2 - 175 },
+  { color: "#E0A02E", size: 13, x: width / 2 + 70, y: height / 2 - 158 },
+  { color: "#1E8A7F", size: 11, x: width / 2 - 72, y: height / 2 + 52 },
+  { color: "#8E5BA6", size: 15, x: width / 2 + 78, y: height / 2 + 33 },
+  { color: "#C24D52", size: 9,  x: width / 2 + 38, y: height / 2 - 212 },
 ];
 
-const ORB_SIZE = 150;
+const ORB_SIZE = 130;
 const GLOW_SIZE = ORB_SIZE + 70;
 
 export default function SplashScreen({ onFinish }: Props) {
@@ -201,26 +200,26 @@ const s = StyleSheet.create({
   },
   title: {
     fontFamily: "InstrumentSerif_400Regular",
-    fontSize: 80,
-    lineHeight: 80,
+    fontSize: 74,
+    lineHeight: 74,
     color: C.text,
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
   tagline: {
     fontFamily: "HankenGrotesk_700Bold",
     fontSize: 12,
-    letterSpacing: 4.5,
+    letterSpacing: 4.08,
     textTransform: "uppercase",
     color: C.accent,
-    marginTop: 16,
+    marginTop: 14,
   },
 
-  // Floats in the lower portion of the screen
+  // Fixed 54px from bottom per Claude Design
   sub: {
     position: "absolute",
-    bottom: height * 0.18,
+    bottom: 54,
     fontFamily: "Newsreader_400Regular_Italic",
-    fontSize: 18,
+    fontSize: 17,
     color: C.text3,
     letterSpacing: 0.3,
   },

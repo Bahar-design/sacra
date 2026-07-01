@@ -11,11 +11,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
+import ThemeToggle from "../components/ThemeToggle";
 import { supabase, getSaved } from "../lib/supabase";
 import { getAllOfflinePrayers, removeFromDevice, clearAllOfflinePrayers, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
-  const { C, isDark, toggleTheme } = useTheme();
+  const { C } = useTheme();
   const [saved, setSaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -128,13 +129,7 @@ export default function ProfileScreen({ navigation }: any) {
                   <Text style={s.heading}>Your sanctuary</Text>
                 </View>
                 {/* Dark / light mode toggle */}
-                <TouchableOpacity
-                  style={s.themeToggle}
-                  onPress={toggleTheme}
-                  activeOpacity={0.7}
-                >
-                  <Text style={s.themeIcon}>{isDark ? "☀" : "☽"}</Text>
-                </TouchableOpacity>
+                <ThemeToggle />
               </View>
             </View>
 
@@ -276,19 +271,6 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       color: C.text,
       letterSpacing: -0.5,
     },
-    themeToggle: {
-      width: 40,
-      height: 40,
-      borderRadius: 999,
-      backgroundColor: C.surface,
-      borderWidth: 1,
-      borderColor: C.line,
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 22,
-    },
-    themeIcon: { fontSize: 17, color: C.text2 },
-
     accountRow: {
       flexDirection: "row",
       alignItems: "center",

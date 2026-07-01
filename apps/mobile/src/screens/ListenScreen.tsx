@@ -19,6 +19,7 @@ import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import { PrayerAPI, getReligionsMap } from "../lib/api";
 import { trackListen } from "../lib/analytics";
+import ThemeToggle from "../components/ThemeToggle";
 import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
@@ -43,6 +44,8 @@ export default function ListenScreen({ navigation }: any) {
   const [results, setResults] = useState<any[]>([]);
   const [transcript, setTranscript] = useState("");
   const [visibleTranscript, setVisibleTranscript] = useState("");
+  const [typingDone, setTypingDone] = useState(false);
+  const [caretVisible, setCaretVisible] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [matchingStep, setMatchingStep] = useState(MATCHING_STEPS[0]);
   const [religionsMap, setReligionsMap] = useState<Record<string, string>>({});
@@ -56,14 +59,25 @@ export default function ListenScreen({ navigation }: any) {
   useEffect(() => {
     if (!transcript) return;
     setVisibleTranscript("");
+    setTypingDone(false);
     let idx = 0;
     const timer = setInterval(() => {
       idx++;
       setVisibleTranscript(transcript.slice(0, idx));
-      if (idx >= transcript.length) clearInterval(timer);
+      if (idx >= transcript.length) {
+        clearInterval(timer);
+        setTypingDone(true);
+      }
     }, 22);
     return () => clearInterval(timer);
   }, [transcript]);
+
+  // Blinking caret during recording and typing
+  useEffect(() => {
+    if (state !== "recording" && state !== "results") return;
+    const blink = setInterval(() => setCaretVisible((v) => !v), 530);
+    return () => clearInterval(blink);
+  }, [state]);
 
   const recorder = useAudioRecorder(
     {
@@ -280,6 +294,7 @@ export default function ListenScreen({ navigation }: any) {
         {/* Header */}
         <View style={s.headerRow}>
           <Text style={s.eyebrow}>Listen</Text>
+          <ThemeToggle />
         </View>
 
         {/* Transcript / Headline area */}
@@ -289,7 +304,8 @@ export default function ListenScreen({ navigation }: any) {
           )}
           {state === "recording" && (
             <Text style={s.transcript}>
-              Listening… <Text style={{ color: C.accent3 }}>|</Text>
+              Listening…{" "}
+              {caretVisible && <Text style={{ color: C.accent3 }}>|</Text>}
             </Text>
           )}
           {state === "processing" && (
@@ -297,9 +313,20 @@ export default function ListenScreen({ navigation }: any) {
               {matchingStep}
             </Text>
           )}
-          {state === "results" && visibleTranscript ? (
-            <Text style={s.transcript}>"{visibleTranscript}"</Text>
-          ) : null}
+          {state === "results" && visibleTranscript ? (() => {
+            const words = visibleTranscript.trim().split(/\s+/).filter(Boolean);
+            const prefix = words.length > 1 ? words.slice(0, -1).join(" ") : "";
+            const lastWord = words[words.length - 1] ?? "";
+            return (
+              <Text style={s.transcript}>
+                "{prefix ? prefix + " " : ""}
+                <Text style={{ color: C.accent }}>{lastWord}</Text>
+                {!typingDone && caretVisible ? (
+                  <Text style={{ color: C.accent3 }}>|</Text>
+                ) : null}"
+              </Text>
+            );
+          })() : null}
           {state === "error" && (
             <Text style={[s.transcript, { color: C.accent }]}>{errorMsg}</Text>
           )}
@@ -452,7 +479,13 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     container: { flex: 1, backgroundColor: C.bg },
     scroll: { flexGrow: 1, paddingBottom: 110, paddingHorizontal: 22 },
 
-    headerRow: { paddingTop: 16, marginBottom: 6 },
+    headerRow: {
+      paddingTop: 16,
+      marginBottom: 6,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
     eyebrow: {
       fontFamily: "HankenGrotesk_700Bold",
       fontSize: 12,

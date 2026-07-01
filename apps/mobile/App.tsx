@@ -78,45 +78,37 @@ function HomeStack(): React.ReactElement {
   );
 }
 
-// Floating glass tab bar matching Claude Design
+// Flat bottom tab bar matching Claude Design
 function MainTabs(): React.ReactElement {
-  const { C, isDark } = useTheme();
+  const { C } = useTheme();
   const insets = useSafeAreaInsets();
-  const tabBarBottom = 18 + insets.bottom;
-
-  const tabBg = isDark ? "rgba(28,22,16,0.96)" : "rgba(255,255,255,0.94)";
-  const tabBorder = isDark ? "rgba(255,240,200,0.08)" : C.hair;
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          position: "absolute",
-          bottom: tabBarBottom,
-          left: 18,
-          right: 18,
-          height: 66,
-          borderRadius: 24,
-          backgroundColor: tabBg,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 6,
+          paddingTop: 8,
+          backgroundColor: C.surface,
           borderTopWidth: 1,
-          borderWidth: 1,
-          borderColor: tabBorder,
-          elevation: 14,
+          borderTopColor: C.line,
+          elevation: 4,
           shadowColor: C.shadow,
-          shadowOffset: { width: 0, height: 8 },
+          shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 1,
-          shadowRadius: 28,
+          shadowRadius: 8,
         },
         tabBarActiveTintColor: C.accent,
         tabBarInactiveTintColor: C.text3,
         tabBarLabelStyle: {
           fontFamily: "HankenGrotesk_700Bold",
           fontSize: 10,
-          letterSpacing: 0.3,
-          marginTop: -2,
+          letterSpacing: 0.2,
+          marginTop: 3,
         },
-        tabBarItemStyle: { paddingTop: 10 },
+        tabBarItemStyle: { paddingTop: 0 },
       }}
     >
       <Tab.Screen

@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
+import ThemeToggle from "../components/ThemeToggle";
 
 // Returns greeting + period index (0=morning,1=afternoon,2=evening)
 function getGreetingInfo(): { greeting: string; period: number } {
@@ -175,8 +176,13 @@ export default function HomeScreen({ navigation }: any) {
           <>
             {/* Header */}
             <View style={s.header}>
-              <Text style={s.greeting}>{greeting}</Text>
-              <Text style={s.heading}>Today's prayers</Text>
+              <View style={s.headerRow}>
+                <View>
+                  <Text style={s.greeting}>{greeting}</Text>
+                  <Text style={s.heading}>Today's prayers</Text>
+                </View>
+                <ThemeToggle />
+              </View>
             </View>
 
             {/* Featured "Today's Prayer" card */}
@@ -201,7 +207,7 @@ export default function HomeScreen({ navigation }: any) {
                       ]}
                     />
                     <Text style={s.featLabel}>
-                      Today's prayer · {relName(featured)}
+                      Prayer of the moment · {relName(featured)}
                     </Text>
                   </View>
                   <Text style={s.featTitle} numberOfLines={2}>
@@ -298,6 +304,11 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     container: { flex: 1, backgroundColor: C.bg },
 
     header: { paddingHorizontal: 22, paddingTop: 16, marginBottom: 22 },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+    },
     greeting: {
       fontFamily: "HankenGrotesk_700Bold",
       fontSize: 12,

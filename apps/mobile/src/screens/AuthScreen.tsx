@@ -16,6 +16,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import { useTheme } from "../lib/ThemeContext";
 import { signIn, signUp, supabase } from "../lib/supabase";
+import ThemeToggle from "../components/ThemeToggle";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -119,7 +120,10 @@ export default function AuthScreen({ onSuccess }: Props) {
         >
           {/* Header */}
           <View style={s.header}>
-            <Text style={s.wordmark}>SACRA</Text>
+            <View style={s.authHeaderRow}>
+              <Text style={s.wordmark}>SACRA</Text>
+              <ThemeToggle />
+            </View>
             <Text style={s.title}>
               {mode === "signin" ? "Welcome back" : "Join SACRA"}
             </Text>
@@ -224,12 +228,17 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
 
     header: { marginBottom: 36 },
+    authHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16,
+    },
     wordmark: {
       fontFamily: "InstrumentSerif_400Regular",
       fontSize: 38,
       color: C.text,
       letterSpacing: 2,
-      marginBottom: 16,
     },
     title: {
       fontFamily: "InstrumentSerif_400Regular",
