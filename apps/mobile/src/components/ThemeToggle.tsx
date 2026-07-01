@@ -50,11 +50,13 @@ export default function ThemeToggle() {
           transform: [{ translateX: knobTranslate }],
         }}
       >
-        <Text style={{ position: "absolute", fontSize: 11, opacity: isDark ? 0 : 1, color: C.accent }}>
-          ☀
+        {/* ☼ = U+263C WHITE SUN WITH RAYS — no emoji variant, always text */}
+        <Text style={{ position: "absolute", fontSize: 11, opacity: isDark ? 0 : 1, color: C.accent, lineHeight: 13 }}>
+          {"☼"}
         </Text>
-        <Text style={{ position: "absolute", fontSize: 10, opacity: isDark ? 1 : 0, color: C.accent }}>
-          ☽
+        {/* ☾ = U+263E LAST QUARTER MOON — waning crescent (C-shape), + FE0E text selector */}
+        <Text style={{ position: "absolute", fontSize: 11, opacity: isDark ? 1 : 0, color: C.accent, lineHeight: 13 }}>
+          {"☾︎"}
         </Text>
       </Animated.View>
     </TouchableOpacity>

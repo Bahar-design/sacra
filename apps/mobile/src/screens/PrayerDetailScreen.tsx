@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,14 +8,60 @@ import {
   ActivityIndicator,
   Share,
   Alert,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
-import { savePrayer, unsavePrayer, getUser } from "../lib/supabase";
+import { savePrayer, unsavePrayer, getSession } from "../lib/supabase";
 import { saveToDevice, removeFromDevice, isPrayerSaved } from "../lib/offlineStorage";
 import { trackSaved, trackCrossFaithViewed } from "../lib/analytics";
+
+// Animated similarity bar card — owns its own Animated.Value
+function FaithCard({ item, onPress, styles: s }: { item: any; onPress: () => void; styles: any }) {
+  const name = item.religion_name ?? item.religions?.name ?? "";
+  const color = getReligionColor(name);
+  const icon = getReligionIcon(name) || item.religion_icon || "";
+  const pct = item.similarity != null ? Math.round(item.similarity * 100) : 0;
+  const barAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(barAnim, {
+      toValue: pct,
+      friction: 7,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
+  }, [pct]);
+
+  const barWidth = barAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <TouchableOpacity style={s.faithNode} activeOpacity={0.75} onPress={onPress}>
+      <View style={[s.faithNodeBar, { backgroundColor: color }]} />
+      <View style={s.faithNodeBody}>
+        <View style={s.faithNodeMeta}>
+          <Text style={[s.faithNodeRel, { color }]}>{icon} {name}</Text>
+          {pct > 0 && <Text style={s.faithNodeSim}>{pct}% match</Text>}
+        </View>
+        <Text style={s.faithNodeTitle}>{item.title}</Text>
+        <Text style={s.faithNodeExcerpt} numberOfLines={2}>{item.body}</Text>
+
+        {/* Animated similarity bar */}
+        {pct > 0 && (
+          <View style={[s.simBarTrack, { borderColor: color + "30" }]}>
+            <Animated.View style={[s.simBarFill, { backgroundColor: color, width: barWidth }]} />
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function PrayerDetailScreen({ route, navigation }: any) {
   const { C } = useTheme();
@@ -27,20 +73,21 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
 
   useEffect(() => {
     setSaved(isPrayerSaved(prayer.id));
-    getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    // getSession() reads from AsyncStorage — no network race condition
+    getSession().then(({ data }) => setUserId(data.session?.user?.id ?? null));
     PrayerAPI.getSimilar(prayer.id)
       .then((res) => {
-        setSimilar(res.data.similar || []);
-        if ((res.data.similar || []).length > 0) {
-          trackCrossFaithViewed({ prayer_id: prayer.id });
-        }
+        // Sort descending by similarity
+        const raw: any[] = res.data.similar || [];
+        const sorted = [...raw].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+        setSimilar(sorted);
+        if (sorted.length > 0) trackCrossFaithViewed({ prayer_id: prayer.id });
       })
       .catch(console.error)
       .finally(() => setLoadSim(false));
   }, [prayer.id]);
 
   const handleSave = async () => {
-    // Block guests from saving
     if (!userId) {
       Alert.alert(
         "Sign in to save",
@@ -52,27 +99,37 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
       );
       return;
     }
-
     const next = !saved;
     setSaved(next);
-    if (next) {
-      saveToDevice(prayer);
-      await savePrayer(userId, prayer.id);
-      trackSaved({ prayer_id: prayer.id, religion: relName });
-    } else {
-      removeFromDevice(prayer.id);
-      await unsavePrayer(userId, prayer.id);
+    try {
+      if (next) {
+        saveToDevice(prayer);
+        await savePrayer(userId, prayer.id);
+        trackSaved({ prayer_id: prayer.id, religion: relName });
+      } else {
+        removeFromDevice(prayer.id);
+        await unsavePrayer(userId, prayer.id);
+      }
+    } catch {
+      setSaved(!next); // revert optimistic update on error
     }
   };
 
   const handleShare = async () => {
-    await Share.share({ message: `${prayer.title}\n\n${prayer.body}\n\n— Discovered with SACRA` });
+    const attribution = prayer.source
+      ? `\n\n— ${prayer.source}`
+      : prayer.tradition
+        ? `\n\n— ${prayer.tradition}`
+        : "";
+    await Share.share({
+      message: `${prayer.title}\n\n${prayer.body}${attribution}\n\nDiscovered with SACRA`,
+    });
   };
 
-  const relName   = prayer.religions?.name ?? "";
-  const relColor  = getReligionColor(relName);
-  const relIcon   = getReligionIcon(relName);
-  const relTint   = getReligionTint(relName);
+  const relName  = prayer.religions?.name ?? "";
+  const relColor = getReligionColor(relName);
+  const relIcon  = getReligionIcon(relName);
+  const relTint  = getReligionTint(relName);
 
   const s = useMemo(() => makeStyles(C), [C]);
 
@@ -104,11 +161,10 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         <Text style={s.title}>{prayer.title}</Text>
 
         {/* Meta chips */}
-        {(prayer.source || prayer.language || prayer.tradition) && (
+        {(prayer.language || prayer.tradition) && (
           <View style={s.metaRow}>
             {prayer.language  && <Text style={s.metaChip}>{prayer.language}</Text>}
             {prayer.tradition && <Text style={s.metaChip}>{prayer.tradition}</Text>}
-            {prayer.source    && <Text style={s.metaSource} numberOfLines={1}>{prayer.source}</Text>}
           </View>
         )}
 
@@ -116,6 +172,13 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
 
         {/* Prayer body */}
         <Text style={s.body}>{prayer.body}</Text>
+
+        {/* Attribution after prayer body */}
+        {(prayer.source || prayer.tradition) && (
+          <Text style={s.attribution}>
+            — {prayer.source || prayer.tradition}
+          </Text>
+        )}
 
         {/* Actions */}
         <View style={s.actions}>
@@ -144,28 +207,14 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
           )}
 
           {similar.map((item) => {
-            const name  = item.religion_name ?? item.religions?.name ?? "";
-            const color = getReligionColor(name);
-            const icon  = getReligionIcon(name) || item.religion_icon || "";
+            const name = item.religion_name ?? item.religions?.name ?? "";
             return (
-              <TouchableOpacity
+              <FaithCard
                 key={item.id}
-                style={s.faithNode}
-                activeOpacity={0.75}
+                item={item}
+                styles={s}
                 onPress={() => navigation.push("PrayerDetail", { prayer: { ...item, religions: { name } } })}
-              >
-                <View style={[s.faithNodeBar, { backgroundColor: color }]} />
-                <View style={s.faithNodeBody}>
-                  <View style={s.faithNodeMeta}>
-                    <Text style={[s.faithNodeRel, { color }]}>{icon} {name}</Text>
-                    {item.similarity != null && (
-                      <Text style={s.faithNodeSim}>{(item.similarity * 100).toFixed(0)}% match</Text>
-                    )}
-                  </View>
-                  <Text style={s.faithNodeTitle}>{item.title}</Text>
-                  <Text style={s.faithNodeExcerpt} numberOfLines={2}>{item.body}</Text>
-                </View>
-              </TouchableOpacity>
+              />
             );
           })}
         </View>
@@ -232,7 +281,6 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       paddingVertical: 5,
       paddingHorizontal: 10,
     },
-    metaSource: { fontFamily: "Newsreader_400Regular_Italic", fontSize: 14, color: C.text3, flex: 1 },
 
     divider: { height: 1, backgroundColor: C.line, marginBottom: 26 },
 
@@ -242,7 +290,15 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       lineHeight: 36,
       color: C.text,
       letterSpacing: 0.1,
+      marginBottom: 16,
+    },
+
+    attribution: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 15,
+      color: C.text3,
       marginBottom: 32,
+      marginTop: 4,
     },
 
     actions: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 40 },
@@ -309,7 +365,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       marginBottom: 8,
     },
     faithNodeRel: { fontFamily: "HankenGrotesk_700Bold", fontSize: 11, letterSpacing: 1, textTransform: "uppercase" },
-    faithNodeSim: { fontFamily: "HankenGrotesk_500Medium", fontSize: 11, color: C.text3 },
+    faithNodeSim: { fontFamily: "HankenGrotesk_500Medium", fontSize: 12, color: C.text3 },
     faithNodeTitle: {
       fontFamily: "InstrumentSerif_400Regular",
       fontSize: 22,
@@ -322,6 +378,18 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       fontSize: 15,
       lineHeight: 22,
       color: C.text2,
+      marginBottom: 10,
+    },
+    simBarTrack: {
+      height: 4,
+      backgroundColor: "transparent",
+      borderRadius: 999,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    simBarFill: {
+      height: "100%",
+      borderRadius: 999,
     },
   });
 }

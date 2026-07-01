@@ -23,7 +23,9 @@ export default function ProfileScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      supabase.auth.getUser().then(async ({ data: { user } }) => {
+      // getSession() reads from AsyncStorage cache — reliable immediately after sign-in
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        const user = session?.user ?? null;
         if (user) {
           setUserEmail(user.email ?? null);
           setIsGuest(false);
@@ -31,7 +33,8 @@ export default function ProfileScreen({ navigation }: any) {
           setSaved(getAllOfflinePrayers());
           // Sync from Supabase (source of truth) — restores prayers after sign-out/sign-in
           try {
-            const { data } = await getSaved(user.id);
+            const { data, error } = await getSaved(user.id);
+            if (error) throw error;
             if (data && data.length > 0) {
               const prayers = data.map((row: any) => row.prayers).filter(Boolean);
               // Populate local SQLite with any Supabase prayers not yet cached

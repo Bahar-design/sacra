@@ -46,6 +46,30 @@ async function transcribeAndSearch(audioBuffer: Buffer, mimeType: string) {
 }
 
 export async function listenRoutes(fastify: FastifyInstance) {
+  // ─── POST /api/listen/transcribe ────────────────────────────────────
+  // Transcribe-only endpoint for real-time chunked recording.
+  // Mobile sends a short audio file every ~6s while recording continues.
+  // Returns {text} — no embedding or search, just the transcript.
+  fastify.post("/transcribe", async (req, rep) => {
+    const data = await req.file();
+    if (!data) return rep.status(400).send({ error: "No audio file provided" });
+    const chunks: Buffer[] = [];
+    for await (const chunk of data.file) chunks.push(chunk);
+    const buf = Buffer.concat(chunks);
+    if (buf.length === 0) return rep.status(400).send({ error: "Empty audio file" });
+    try {
+      const transcription = (await openai.audio.transcriptions.create({
+        file: await toFile(Readable.from(buf), "chunk.m4a", { type: data.mimetype }),
+        model: "whisper-1",
+        response_format: "verbose_json",
+      })) as any;
+      logWhisperCost(transcription.duration || 0).catch(console.error);
+      return { text: transcription.text?.trim() || "" };
+    } catch (err: any) {
+      return rep.status(422).send({ error: err.message });
+    }
+  });
+
   // ─── HTTP POST /api/listen ───────────────────────────────────────────
   // Standard file upload. User records audio, taps stop, file sent at once.
   fastify.post("/", async (req, rep) => {

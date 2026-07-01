@@ -68,4 +68,19 @@ export const PrayerAPI = {
       timeout: 60000,
     });
   },
+
+  // Transcribe a short audio chunk — Whisper only, no embedding/search
+  listenChunk: async (audioUri: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append("audio", {
+      uri: audioUri,
+      type: "audio/m4a",
+      name: "chunk.m4a",
+    } as any);
+    const res = await api.post("/api/listen/transcribe", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 30000,
+    });
+    return res.data.text as string;
+  },
 };

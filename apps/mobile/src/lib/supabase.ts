@@ -38,7 +38,7 @@ export const getSession = () => supabase.auth.getSession();
 export const savePrayer = (userId: string, prayerId: string) =>
   supabase
     .from("saved_prayers")
-    .insert({ user_id: userId, prayer_id: prayerId });
+    .upsert({ user_id: userId, prayer_id: prayerId }, { onConflict: "user_id,prayer_id" });
 
 export const unsavePrayer = (userId: string, prayerId: string) =>
   supabase

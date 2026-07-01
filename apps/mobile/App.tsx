@@ -141,7 +141,25 @@ function MainTabs(): React.ReactElement {
         component={SearchStack}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 19, lineHeight: 22 }}>⊙</Text>
+            // View-based magnifying glass: circle outline + diagonal handle
+            <View style={{ width: 20, height: 20 }}>
+              <View style={{
+                width: 13, height: 13,
+                borderRadius: 6.5,
+                borderWidth: 2,
+                borderColor: color,
+                position: "absolute",
+                top: 0, left: 0,
+              }} />
+              <View style={{
+                width: 2.5, height: 8,
+                backgroundColor: color,
+                borderRadius: 1.5,
+                position: "absolute",
+                bottom: 0, right: 1,
+                transform: [{ rotate: "45deg" }],
+              }} />
+            </View>
           ),
         }}
       />
@@ -149,9 +167,21 @@ function MainTabs(): React.ReactElement {
         name="Sacred"
         component={ProfileStack}
         options={{
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 18, lineHeight: 22 }}>◆</Text>
-          ),
+          tabBarIcon: ({ color }) => {
+            // View-based bookmark: filled rectangle + pointed bottom (two triangles)
+            const W = 13;
+            const bodyH = 13;
+            const tipH = 7;
+            return (
+              <View style={{ width: W, height: bodyH + tipH }}>
+                <View style={{ width: W, height: bodyH, backgroundColor: color, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+                <View style={{ flexDirection: "row" }}>
+                  <View style={{ width: 0, height: 0, borderTopWidth: tipH, borderTopColor: color, borderRightWidth: W / 2, borderRightColor: "transparent" }} />
+                  <View style={{ width: 0, height: 0, borderTopWidth: tipH, borderTopColor: color, borderLeftWidth: W / 2, borderLeftColor: "transparent" }} />
+                </View>
+              </View>
+            );
+          },
         }}
       />
     </Tab.Navigator>
