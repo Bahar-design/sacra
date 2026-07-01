@@ -18,8 +18,8 @@ export const trackSearch = (p: {
 }) =>
   posthog.capture("prayer_searched", {
     query: p.query,
-    mood: p.mood,
-    occasion: p.occasion,
+    ...(p.mood !== undefined && { mood: p.mood }),
+    ...(p.occasion !== undefined && { occasion: p.occasion }),
     result_count: p.resultCount,
   });
 
