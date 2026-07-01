@@ -88,28 +88,44 @@ export default function ListenScreen({ navigation }: any) {
   const ping2Anim = useRef(new Animated.Value(0.65)).current;
   const spinAnim = useRef(new Animated.Value(0)).current;
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingLoopRef = useRef<any>(null);
   const ping2LoopRef = useRef<any>(null);
   const spinLoopRef = useRef<any>(null);
+  const meteringRef = useRef<number | null>(null);
 
-  // Amplitude-responsive waveform during recording
+  // Capture real metering if available (iOS + some Android configs)
   useEffect(() => {
-    if (!recorderState.isRecording) return;
-    const metering = recorderState.metering;
-    if (metering === undefined || metering === null) return;
+    if (recorderState.metering !== undefined && recorderState.metering !== null) {
+      meteringRef.current = recorderState.metering;
+    }
+  }, [recorderState.metering]);
 
-    // Convert dBFS (typically -60 to 0) to 0–1 range
-    const normalized = Math.max(0, Math.min(1, (metering + 60) / 60));
+  const startWaveAnimation = () => {
+    // 80ms interval drives bars — uses real dBFS metering when available,
+    // falls back to a naturally varying sine+noise pattern on Android
+    let phase = 0;
+    waveTimer.current = setInterval(() => {
+      phase += 0.18;
+      let normalized: number;
+      if (meteringRef.current !== null) {
+        normalized = Math.max(0, Math.min(1, (meteringRef.current + 60) / 60));
+      } else {
+        // Natural-feeling wave: slow sine envelope + per-frame noise
+        const env = 0.35 + Math.sin(phase) * 0.22 + Math.cos(phase * 0.7) * 0.12;
+        normalized = Math.max(0.08, Math.min(0.92, env + (Math.random() - 0.5) * 0.18));
+      }
+      waves.forEach((wave, i) => {
+        const target = Math.max(0.07, normalized * BAR_MULTIPLIERS[i]);
+        Animated.timing(wave, { toValue: target, duration: 75, useNativeDriver: false }).start();
+      });
+    }, 80);
+  };
 
-    waves.forEach((wave, i) => {
-      const target = Math.max(0.06, normalized * BAR_MULTIPLIERS[i]);
-      Animated.timing(wave, {
-        toValue: target,
-        duration: 80,
-        useNativeDriver: false,
-      }).start();
-    });
-  }, [recorderState.metering, recorderState.isRecording]);
+  const stopWaveAnimation = () => {
+    if (waveTimer.current) { clearInterval(waveTimer.current); waveTimer.current = null; }
+    meteringRef.current = null;
+  };
 
   const startPingRings = () => {
     pingLoopRef.current = Animated.loop(
@@ -192,6 +208,7 @@ export default function ListenScreen({ navigation }: any) {
       setVisibleTranscript("");
       setState("recording");
       startPingRings();
+      startWaveAnimation();
     } catch {
       setErrorMsg("Failed to start recording. Please try again.");
       setState("error");
@@ -201,6 +218,7 @@ export default function ListenScreen({ navigation }: any) {
   const stopAndProcess = async () => {
     if (state !== "recording") return;
     stopPingRings();
+    stopWaveAnimation();
     animateBarsToIdle();
     setState("processing");
     startProcessingAnim();

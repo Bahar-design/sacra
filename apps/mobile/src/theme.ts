@@ -60,11 +60,11 @@ export const RELIGION_ICONS: Record<string, string> = {
   Islam: "☪",
   Judaism: "✡",
   Hinduism: "ॐ",              // U+0950 Devanagari Om — plain text, no emoji presentation
-  Buddhism: "✿",              // White florette — clean text symbol, well-centered
+  Buddhism: "☸︎",        // U+2638 Dharma Wheel + U+FE0E text-presentation selector (no emoji color)
   Sikhism: "☬",
   Bahai: "✷",
   Zoroastrianism: "𓄂",
-  Jainism: "∞",               // Infinity symbol — core Jain concept of infinite universes
+  Jainism: "⊙",               // U+2299 Circled Dot — Jain concept of jiva (soul) at center of cosmos
   Taoism: "☯",
   Shinto: "⛩",
   "Indigenous / Animist": "𖦏",

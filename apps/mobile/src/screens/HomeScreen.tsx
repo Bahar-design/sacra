@@ -46,6 +46,7 @@ const AURORA_COLORS = [
 export default function HomeScreen({ navigation }: any) {
   const { C } = useTheme();
   const [prayers, setPrayers] = useState<any[]>([]);
+  const [allPrayers, setAllPrayers] = useState<any[]>([]); // full unfiltered set — used for Today's Prayer
   const [religions, setReligions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeRel, setActiveRel] = useState("");
@@ -77,6 +78,7 @@ export default function HomeScreen({ navigation }: any) {
       .then(([relRes, prayRes]) => {
         setReligions(relRes.data.data || []);
         const data = prayRes.data.data || [];
+        setAllPrayers(data); // store full list once — never overwritten by filter
         setPrayers(data);
         setHasMore(data.length === 50);
       })
@@ -121,8 +123,9 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  const featured = pickTodaysPrayer(prayers);
-  const listPrayers = prayers.filter((p) => p !== featured);
+  // Use the full unfiltered set so Today's Prayer never changes when religion filter is tapped
+  const featured = pickTodaysPrayer(allPrayers);
+  const listPrayers = prayers.filter((p) => p.id !== featured?.id);
   const relName = (item: any) => item.religions?.name ?? "";
 
   const renderItem = ({ item }: { item: any }) => {

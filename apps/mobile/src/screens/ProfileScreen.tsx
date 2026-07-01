@@ -11,8 +11,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
-import { supabase } from "../lib/supabase";
-import { getAllOfflinePrayers, removeFromDevice, clearAllOfflinePrayers } from "../lib/offlineStorage";
+import { supabase, getSaved } from "../lib/supabase";
+import { getAllOfflinePrayers, removeFromDevice, clearAllOfflinePrayers, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
   const { C, isDark, toggleTheme } = useTheme();
@@ -22,11 +22,26 @@ export default function ProfileScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      setSaved(getAllOfflinePrayers());
-      supabase.auth.getUser().then(({ data: { user } }) => {
+      supabase.auth.getUser().then(async ({ data: { user } }) => {
         if (user) {
           setUserEmail(user.email ?? null);
           setIsGuest(false);
+          // Show local SQLite immediately while we fetch from Supabase
+          setSaved(getAllOfflinePrayers());
+          // Sync from Supabase (source of truth) — restores prayers after sign-out/sign-in
+          try {
+            const { data } = await getSaved(user.id);
+            if (data && data.length > 0) {
+              const prayers = data.map((row: any) => row.prayers).filter(Boolean);
+              // Populate local SQLite with any Supabase prayers not yet cached
+              prayers.forEach((p: any) => {
+                if (p && !isPrayerSaved(p.id)) saveToDevice(p);
+              });
+              setSaved(getAllOfflinePrayers());
+            }
+          } catch {
+            // Keep showing local data on network error
+          }
         } else {
           setIsGuest(true);
           // Guests see no saved prayers
