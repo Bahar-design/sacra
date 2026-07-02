@@ -50,7 +50,7 @@ export const unsavePrayer = (userId: string, prayerId: string) =>
 export const getSaved = (userId: string) =>
   supabase
     .from("saved_prayers")
-    .select("prayer_id, prayers(*)")
+    .select("prayer_id, prayers(*, religions(name, icon_emoji))")
     .eq("user_id", userId);
 
 //Listen History

@@ -334,7 +334,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       justifyContent: "center",
       flexShrink: 0,
     },
-    iconText: { fontSize: 19 },
+    iconText: { fontSize: 19, includeFontPadding: false, textAlignVertical: "center", lineHeight: 22 },
     cardBody: { flex: 1, minWidth: 0 },
     cardMeta: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
     cardRel: {

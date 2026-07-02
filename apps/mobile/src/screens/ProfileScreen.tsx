@@ -13,7 +13,7 @@ import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import ThemeToggle from "../components/ThemeToggle";
 import { supabase, getSaved } from "../lib/supabase";
-import { getAllOfflinePrayers, removeFromDevice, clearAllOfflinePrayers, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
+import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
   const { C } = useTheme();
@@ -23,32 +23,40 @@ export default function ProfileScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      // getSession() reads from AsyncStorage cache — reliable immediately after sign-in
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         const user = session?.user ?? null;
         if (user) {
           setUserEmail(user.email ?? null);
           setIsGuest(false);
-          // Show local SQLite immediately while we fetch from Supabase
+          // Show local SQLite immediately while Supabase syncs
           setSaved(getAllOfflinePrayers());
-          // Sync from Supabase (source of truth) — restores prayers after sign-out/sign-in
+          // Sync from Supabase — restores prayers after any sign-out/sign-in cycle
           try {
             const { data, error } = await getSaved(user.id);
             if (error) throw error;
             if (data && data.length > 0) {
-              const prayers = data.map((row: any) => row.prayers).filter(Boolean);
-              // Populate local SQLite with any Supabase prayers not yet cached
+              const prayers = data
+                .map((row: any) => {
+                  const p = row.prayers;
+                  if (!p) return null;
+                  // Flatten the nested religions join so saveToDevice gets the name
+                  return {
+                    ...p,
+                    religions: p.religions ?? { name: "", icon_emoji: "" },
+                  };
+                })
+                .filter(Boolean);
               prayers.forEach((p: any) => {
                 if (p && !isPrayerSaved(p.id)) saveToDevice(p);
               });
-              setSaved(getAllOfflinePrayers());
             }
+            // Always refresh from local DB after sync attempt
+            setSaved(getAllOfflinePrayers());
           } catch {
-            // Keep showing local data on network error
+            // Network error — local data already shown above
           }
         } else {
           setIsGuest(true);
-          // Guests see no saved prayers
           setSaved([]);
         }
       });
@@ -62,8 +70,7 @@ export default function ProfileScreen({ navigation }: any) {
         text: "Sign out",
         style: "destructive",
         onPress: async () => {
-          // Clear local prayer cache before signing out
-          clearAllOfflinePrayers();
+          // Keep local SQLite cache intact — restored when same user signs back in
           setSaved([]);
           await supabase.auth.signOut();
         },
@@ -127,9 +134,9 @@ export default function ProfileScreen({ navigation }: any) {
             {/* Header */}
             <View style={s.header}>
               <View style={s.headerRow}>
-                <View>
+                <View style={{ flex: 1, marginRight: 12 }}>
                   <Text style={s.eyebrow}>Sacred</Text>
-                  <Text style={s.heading}>Your sanctuary</Text>
+                  <Text style={s.heading}>Your Profile</Text>
                 </View>
                 {/* Dark / light mode toggle */}
                 <ThemeToggle />
@@ -270,7 +277,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     heading: {
       fontFamily: "InstrumentSerif_400Regular",
       fontSize: 42,
-      lineHeight: 40,
+      lineHeight: 46,
       color: C.text,
       letterSpacing: -0.5,
     },

@@ -9,6 +9,7 @@ import {
   Share,
   Alert,
   Animated,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
@@ -18,66 +19,205 @@ import { savePrayer, unsavePrayer, getSession } from "../lib/supabase";
 import { saveToDevice, removeFromDevice, isPrayerSaved } from "../lib/offlineStorage";
 import { trackSaved, trackCrossFaithViewed } from "../lib/analytics";
 
-// Animated similarity bar card — owns its own Animated.Value
-function FaithCard({ item, onPress, styles: s }: { item: any; onPress: () => void; styles: any }) {
-  const name = item.religion_name ?? item.religions?.name ?? "";
+const { width: SCREEN_W } = Dimensions.get("window");
+// Constellation layout constants
+const CONST_H   = 300;
+const CONST_CX  = (SCREEN_W - 44) / 2; // center x within 22px horizontal padding
+const CONST_CY  = CONST_H / 2;
+const ORBIT_R   = 105; // radius for satellite nodes
+const NODE_R    = 27;  // satellite radius (54px diameter / 2)
+const CENTER_R  = 42;  // center orb radius (84px / 2)
+
+// Satellite node: single prayer bubble with animated float
+function ConstellationNode({
+  item,
+  angle,
+  delay,
+  onPress,
+  C,
+}: {
+  item: any;
+  angle: number;
+  delay: number;
+  onPress: () => void;
+  C: any;
+}) {
+  const name  = item.religion_name ?? item.religions?.name ?? "";
   const color = getReligionColor(name);
-  const icon = getReligionIcon(name) || item.religion_icon || "";
-  const pct = item.similarity != null ? Math.round(item.similarity * 100) : 0;
-  const barAnim = useRef(new Animated.Value(0)).current;
+  const icon  = getReligionIcon(name);
+  const pct   = item.similarity != null ? Math.round(item.similarity * 100) : 0;
+
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.spring(barAnim, {
-      toValue: pct,
-      friction: 7,
-      tension: 40,
-      useNativeDriver: false,
-    }).start();
-  }, [pct]);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(floatAnim, { toValue: -8, duration: 2200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 8,  duration: 2200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0,  duration: 2200, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
-  const barWidth = barAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: ["0%", "100%"],
-    extrapolate: "clamp",
-  });
+  const x = CONST_CX + Math.cos(angle) * ORBIT_R;
+  const y = CONST_CY + Math.sin(angle) * ORBIT_R;
 
   return (
-    <TouchableOpacity style={s.faithNode} activeOpacity={0.75} onPress={onPress}>
-      <View style={[s.faithNodeBar, { backgroundColor: color }]} />
-      <View style={s.faithNodeBody}>
-        <View style={s.faithNodeMeta}>
-          <Text style={[s.faithNodeRel, { color }]}>{icon} {name}</Text>
-          {pct > 0 && <Text style={s.faithNodeSim}>{pct}% match</Text>}
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: x - NODE_R - 12,  // extra width for label
+        top:  y - NODE_R - 20,  // extra height for labels below
+        width: (NODE_R + 12) * 2,
+        alignItems: "center",
+        transform: [{ translateY: floatAnim }],
+      }}
+    >
+      <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={{ alignItems: "center" }}>
+        <View style={{
+          width: NODE_R * 2,
+          height: NODE_R * 2,
+          borderRadius: NODE_R,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 2,
+          borderColor: color,
+          backgroundColor: C.surface,
+          shadowColor: C.shadow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 1,
+          shadowRadius: 10,
+          elevation: 4,
+        }}>
+          <Text style={{ fontSize: 22, includeFontPadding: false, textAlignVertical: "center" }}>
+            {icon}
+          </Text>
         </View>
-        <Text style={s.faithNodeTitle}>{item.title}</Text>
-        <Text style={s.faithNodeExcerpt} numberOfLines={2}>{item.body}</Text>
+        <Text style={{
+          fontFamily: "HankenGrotesk_700Bold",
+          fontSize: 9,
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+          color: C.text2,
+          marginTop: 5,
+          textAlign: "center",
+        }} numberOfLines={2}>
+          {name}
+        </Text>
+        <Text style={{
+          fontFamily: "HankenGrotesk_700Bold",
+          fontSize: 9,
+          color,
+          textAlign: "center",
+        }}>
+          {pct > 0 ? `${pct}%` : ""}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
-        {/* Animated similarity bar */}
-        {pct > 0 && (
-          <View style={[s.simBarTrack, { borderColor: color + "30" }]}>
-            <Animated.View style={[s.simBarFill, { backgroundColor: color, width: barWidth }]} />
-          </View>
-        )}
+// Constellation diagram: center prayer + orbiting similar prayers
+function ConstellationDiagram({
+  prayer,
+  similar,
+  onNodePress,
+  C,
+}: {
+  prayer: any;
+  similar: any[];
+  onNodePress: (item: any) => void;
+  C: any;
+}) {
+  const relName  = prayer.religions?.name ?? "";
+  const relIcon  = getReligionIcon(relName);
+  const pingAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pingAnim, { toValue: 1, duration: 3000, useNativeDriver: true }),
+        Animated.timing(pingAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, []);
+
+  const count  = similar.length;
+  const angles = Array.from({ length: count }, (_, i) =>
+    -Math.PI / 2 + (2 * Math.PI / count) * i,
+  );
+
+  const pingOpacity = pingAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.3, 0.05, 0] });
+  const pingScale   = pingAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] });
+
+  return (
+    <View style={{ height: CONST_H, position: "relative" }}>
+      {/* Satellite nodes */}
+      {similar.map((item, i) => (
+        <ConstellationNode
+          key={item.id}
+          item={item}
+          angle={angles[i]}
+          delay={i * 400}
+          onPress={() => onNodePress(item)}
+          C={C}
+        />
+      ))}
+
+      {/* Center orb — the current prayer's religion */}
+      <View style={{
+        position: "absolute",
+        left: CONST_CX - CENTER_R,
+        top:  CONST_CY - CENTER_R,
+        width: CENTER_R * 2,
+        height: CENTER_R * 2,
+        borderRadius: CENTER_R,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: C.accent,
+        shadowColor: C.accent,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 8,
+        zIndex: 3,
+      }}>
+        <Text style={{ fontSize: 30, color: C.onacc, includeFontPadding: false }}>
+          {relIcon}
+        </Text>
+
+        {/* Ping ring */}
+        <Animated.View style={{
+          position: "absolute",
+          width: (CENTER_R + 8) * 2,
+          height: (CENTER_R + 8) * 2,
+          borderRadius: CENTER_R + 8,
+          borderWidth: 1.5,
+          borderColor: C.accent,
+          opacity: pingOpacity,
+          transform: [{ scale: pingScale }],
+        }} />
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
 export default function PrayerDetailScreen({ route, navigation }: any) {
   const { C } = useTheme();
   const { prayer } = route.params;
-  const [similar, setSimilar] = useState<any[]>([]);
-  const [loadSim, setLoadSim] = useState(true);
-  const [saved, setSaved] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [similar, setSimilar]   = useState<any[]>([]);
+  const [loadSim, setLoadSim]   = useState(true);
+  const [saved, setSaved]       = useState(false);
+  const [userId, setUserId]     = useState<string | null>(null);
 
   useEffect(() => {
     setSaved(isPrayerSaved(prayer.id));
-    // getSession() reads from AsyncStorage — no network race condition
     getSession().then(({ data }) => setUserId(data.session?.user?.id ?? null));
     PrayerAPI.getSimilar(prayer.id)
       .then((res) => {
-        // Sort descending by similarity
         const raw: any[] = res.data.similar || [];
         const sorted = [...raw].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
         setSimilar(sorted);
@@ -111,18 +251,14 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         await unsavePrayer(userId, prayer.id);
       }
     } catch {
-      setSaved(!next); // revert optimistic update on error
+      setSaved(!next);
     }
   };
 
   const handleShare = async () => {
-    const attribution = prayer.source
-      ? `\n\n— ${prayer.source}`
-      : prayer.tradition
-        ? `\n\n— ${prayer.tradition}`
-        : "";
+    const attr = prayer.source ? `\n\n— ${prayer.source}` : "";
     await Share.share({
-      message: `${prayer.title}\n\n${prayer.body}${attribution}\n\nDiscovered with SACRA`,
+      message: `${prayer.title}\n\n${prayer.body}${attr}\n\nDiscovered with SACRA`,
     });
   };
 
@@ -132,6 +268,11 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
   const relTint  = getReligionTint(relName);
 
   const s = useMemo(() => makeStyles(C), [C]);
+
+  const navigateToSimilar = (item: any) => {
+    const name = item.religion_name ?? item.religions?.name ?? "";
+    navigation.push("PrayerDetail", { prayer: { ...item, religions: { name } } });
+  };
 
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
@@ -154,7 +295,7 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
         {/* Religion pill */}
         <View style={[s.relPill, { backgroundColor: relTint, borderColor: relColor + "55" }]}>
-          <Text style={[s.relPillText, { color: relColor }]}>{relIcon} {relName}</Text>
+          <Text style={[s.relPillText, { color: relColor }]}>{relIcon}  {relName}</Text>
         </View>
 
         {/* Title */}
@@ -173,20 +314,18 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         {/* Prayer body */}
         <Text style={s.body}>{prayer.body}</Text>
 
-        {/* Attribution after prayer body */}
-        {(prayer.source || prayer.tradition) && (
-          <Text style={s.attribution}>
-            — {prayer.source || prayer.tradition}
-          </Text>
+        {/* Attribution — only the source (author), no tradition fallback since it's already in chips */}
+        {prayer.source && (
+          <Text style={s.attribution}>— {prayer.source}</Text>
         )}
 
-        {/* Actions */}
+        {/* Action buttons */}
         <View style={s.actions}>
           <TouchableOpacity style={s.saveBtn} onPress={handleSave} activeOpacity={0.85}>
             <Text style={s.saveBtnTxt}>
               {userId
-                ? saved ? "♥ Saved" : "♡ Save to sanctuary"
-                : "♡ Sign in to save"}
+                ? saved ? "♥  Saved" : "♡  Save to sanctuary"
+                : "♡  Sign in to save"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.shareBtn} onPress={handleShare} activeOpacity={0.75}>
@@ -194,29 +333,54 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Cross-faith section */}
+        {/* ── Echoes across faiths ──────────────────────────────────────── */}
         <View style={s.crossFaithSection}>
           <Text style={s.crossFaithTitle}>Echoes across faiths</Text>
           <Text style={s.crossFaithSub}>
-            This prayer resonates with similar words from other traditions.
+            The same longing, spoken in other tongues.
           </Text>
 
           {loadSim && <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />}
+
           {!loadSim && similar.length === 0 && (
             <Text style={s.crossFaithEmpty}>No cross-faith matches found.</Text>
           )}
 
-          {similar.map((item) => {
-            const name = item.religion_name ?? item.religions?.name ?? "";
-            return (
-              <FaithCard
-                key={item.id}
-                item={item}
-                styles={s}
-                onPress={() => navigation.push("PrayerDetail", { prayer: { ...item, religions: { name } } })}
+          {!loadSim && similar.length > 0 && (
+            <>
+              {/* Constellation diagram */}
+              <ConstellationDiagram
+                prayer={prayer}
+                similar={similar}
+                onNodePress={navigateToSimilar}
+                C={C}
               />
-            );
-          })}
+
+              {/* List below diagram */}
+              {similar.map((item) => {
+                const name  = item.religion_name ?? item.religions?.name ?? "";
+                const color = getReligionColor(name);
+                const pct   = item.similarity != null ? Math.round(item.similarity * 100) : 0;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={s.faithRow}
+                    activeOpacity={0.75}
+                    onPress={() => navigateToSimilar(item)}
+                  >
+                    <View style={[s.faithDot, { backgroundColor: color }]} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.faithTitle} numberOfLines={2}>{item.title}</Text>
+                      <Text style={[s.faithRel, { color }]}>{name}</Text>
+                    </View>
+                    {pct > 0 && (
+                      <Text style={s.faithSim}>{pct}%</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -235,8 +399,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       paddingVertical: 14,
     },
     circleBtn: {
-      width: 42,
-      height: 42,
+      width: 42, height: 42,
       borderRadius: 999,
       backgroundColor: C.surface,
       borderWidth: 1,
@@ -246,7 +409,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     },
     circleBtnTxt: { fontSize: 17, color: C.text2 },
 
-    scroll: { paddingBottom: 110, paddingHorizontal: 22 },
+    scroll: { paddingBottom: 120, paddingHorizontal: 22 },
 
     relPill: {
       alignSelf: "flex-start",
@@ -316,8 +479,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     },
     saveBtnTxt: { fontFamily: "HankenGrotesk_700Bold", fontSize: 15, color: C.onacc },
     shareBtn: {
-      width: 50,
-      height: 50,
+      width: 50, height: 50,
       borderRadius: 14,
       backgroundColor: C.surface,
       borderWidth: 1,
@@ -327,6 +489,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     },
     shareBtnTxt: { fontSize: 19, color: C.text2 },
 
+    // Echoes across faiths
     crossFaithSection: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 28 },
     crossFaithTitle: {
       fontFamily: "InstrumentSerif_400Regular",
@@ -340,56 +503,43 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       fontSize: 17,
       lineHeight: 25,
       color: C.text2,
-      marginBottom: 22,
+      marginBottom: 14,
     },
-    crossFaithEmpty: { fontFamily: "Newsreader_400Regular_Italic", fontSize: 16, color: C.text3, marginTop: 10 },
+    crossFaithEmpty: {
+      fontFamily: "Newsreader_400Regular_Italic",
+      fontSize: 16,
+      color: C.text3,
+      marginTop: 10,
+    },
 
-    faithNode: {
-      flexDirection: "row",
-      backgroundColor: C.surface,
-      borderRadius: 18,
-      overflow: "hidden",
-      marginBottom: 12,
-      shadowColor: C.shadow,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 1,
-      shadowRadius: 12,
-      elevation: 3,
-    },
-    faithNodeBar: { width: 5, flexShrink: 0 },
-    faithNodeBody: { flex: 1, padding: 16 },
-    faithNodeMeta: {
+    // List rows below constellation
+    faithRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 8,
+      gap: 14,
+      paddingVertical: 15,
+      borderTopWidth: 1,
+      borderTopColor: C.hair,
     },
-    faithNodeRel: { fontFamily: "HankenGrotesk_700Bold", fontSize: 11, letterSpacing: 1, textTransform: "uppercase" },
-    faithNodeSim: { fontFamily: "HankenGrotesk_500Medium", fontSize: 12, color: C.text3 },
-    faithNodeTitle: {
+    faithDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+    faithTitle: {
       fontFamily: "InstrumentSerif_400Regular",
-      fontSize: 22,
-      lineHeight: 24,
-      color: C.text,
-      marginBottom: 6,
-    },
-    faithNodeExcerpt: {
-      fontFamily: "Newsreader_400Regular_Italic",
-      fontSize: 15,
+      fontSize: 19,
       lineHeight: 22,
-      color: C.text2,
-      marginBottom: 10,
+      color: C.text,
     },
-    simBarTrack: {
-      height: 4,
-      backgroundColor: "transparent",
-      borderRadius: 999,
-      borderWidth: 1,
-      overflow: "hidden",
+    faithRel: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 10,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      marginTop: 2,
     },
-    simBarFill: {
-      height: "100%",
-      borderRadius: 999,
+    faithSim: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 12,
+      color: C.text3,
+      flexShrink: 0,
     },
   });
 }
