@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { lightC } from "../theme";
 
 const { width, height } = Dimensions.get("window");
@@ -105,12 +104,7 @@ export default function SplashScreen({ onFinish }: Props) {
           },
         ]}
       >
-        <LinearGradient
-          colors={[C.accent, C.accent2, C.accent3]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={s.orb}
-        />
+        <View style={s.orb} />
         {/* Soft glow ring */}
         <View style={s.orbGlow} />
       </Animated.View>
@@ -159,6 +153,7 @@ const s = StyleSheet.create({
     width: ORB_SIZE,
     height: ORB_SIZE,
     borderRadius: ORB_SIZE / 2,
+    backgroundColor: C.accent,
   },
   orbGlow: {
     position: "absolute",
