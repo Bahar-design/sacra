@@ -5,7 +5,6 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, StatusBar, View, ActivityIndicator, TouchableOpacity } from "react-native";
-import { Session } from "@supabase/supabase-js";
 import { useFonts } from "expo-font";
 import {
   HankenGrotesk_400Regular,
@@ -98,26 +97,10 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
-  // Circle + diagonal handle — matches <circle cx="11" cy="11" r="6.5"/>  <line x1="16.5" y1="16.5" x2="21" y2="21"/>
   return (
-    <View style={{ width: 22, height: 22 }}>
-      <View style={{
-        width: 14, height: 14,
-        borderRadius: 7,
-        borderWidth: 2.3,
-        borderColor: color,
-        position: "absolute",
-        top: 0, left: 0,
-      }} />
-      <View style={{
-        width: 2.5, height: 8,
-        backgroundColor: color,
-        borderRadius: 1.5,
-        position: "absolute",
-        bottom: 0, right: 0,
-        transform: [{ rotate: "45deg" }],
-      }} />
-    </View>
+    <Text style={{ fontSize: 18, color, includeFontPadding: false, textAlignVertical: "center" }}>
+      🔍
+    </Text>
   );
 }
 
@@ -214,7 +197,6 @@ function AppContent(): React.ReactElement {
   const { C, isDark } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
   const [fontsLoaded] = useFonts({
@@ -233,13 +215,11 @@ function AppContent(): React.ReactElement {
     initOfflineDB();
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
       if (!session) setShowAuth(true);
       setAuthReady(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
       if (!session) setShowAuth(true);
     });
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -13,13 +13,14 @@ import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import ThemeToggle from "../components/ThemeToggle";
 import { supabase, getSaved } from "../lib/supabase";
-import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
+import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved, clearAllOfflinePrayers } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
   const { C } = useTheme();
   const [saved, setSaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -28,6 +29,11 @@ export default function ProfileScreen({ navigation }: any) {
         if (user) {
           setUserEmail(user.email ?? null);
           setIsGuest(false);
+          // Different account signed in — clear previous user's local cache
+          if (lastUserIdRef.current !== null && lastUserIdRef.current !== user.id) {
+            clearAllOfflinePrayers();
+          }
+          lastUserIdRef.current = user.id;
           // Show local SQLite immediately while Supabase syncs
           setSaved(getAllOfflinePrayers());
           // Sync from Supabase — restores prayers after any sign-out/sign-in cycle

@@ -75,7 +75,7 @@ export async function prayerRoutes(fastify: FastifyInstance) {
         source_prayer_id: id,
         source_embedding: prayer.embedding,
         exclude_religion_id: prayer.religion_id,
-        max_religions: 5,
+        max_religions: 8,
       },
     );
     return { similar: similar || [] };

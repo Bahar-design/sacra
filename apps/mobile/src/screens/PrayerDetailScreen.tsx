@@ -20,6 +20,15 @@ import { saveToDevice, removeFromDevice, isPrayerSaved } from "../lib/offlineSto
 import { trackSaved, trackCrossFaithViewed } from "../lib/analytics";
 
 const { width: SCREEN_W } = Dimensions.get("window");
+
+// Parse "Bahaullah -- Prayer for Purity of Heart" → "Bahaullah"
+function authorOnly(source: string): string {
+  const em = source.indexOf(' — ');
+  if (em > 0) return source.slice(0, em).trim();
+  const dash = source.indexOf(' -- ');
+  if (dash > 0) return source.slice(0, dash).trim();
+  return source;
+}
 // Constellation layout constants
 const CONST_H   = 300;
 const CONST_CX  = (SCREEN_W - 44) / 2; // center x within 22px horizontal padding
@@ -97,19 +106,18 @@ function ConstellationNode({
           </Text>
         </View>
         <Text style={{
-          fontFamily: "HankenGrotesk_700Bold",
-          fontSize: 9,
-          letterSpacing: 0.4,
-          textTransform: "uppercase",
+          fontFamily: "HankenGrotesk_600SemiBold",
+          fontSize: 8,
           color: C.text2,
           marginTop: 5,
           textAlign: "center",
+          lineHeight: 11,
         }} numberOfLines={2}>
-          {name}
+          {item.title}
         </Text>
         <Text style={{
           fontFamily: "HankenGrotesk_700Bold",
-          fontSize: 9,
+          fontSize: 8,
           color,
           textAlign: "center",
         }}>
@@ -314,9 +322,9 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         {/* Prayer body */}
         <Text style={s.body}>{prayer.body}</Text>
 
-        {/* Attribution — only the source (author), no tradition fallback since it's already in chips */}
+        {/* Attribution — author only, strip "Author -- Prayer Title" suffix */}
         {prayer.source && (
-          <Text style={s.attribution}>— {prayer.source}</Text>
+          <Text style={s.attribution}>— {authorOnly(prayer.source)}</Text>
         )}
 
         {/* Action buttons */}
