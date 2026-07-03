@@ -11,7 +11,6 @@ import {
   Text,
   StatusBar,
   View,
-  ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
 import { useFonts } from "expo-font";
@@ -127,7 +126,8 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
-  // Magnifying glass: circle lens + angled handle, all in theme color
+  // Circle lens at top-left; handle rotated 45° so its top end lands at the
+  // circle's bottom-right edge — giving a connected magnifying-glass silhouette.
   return (
     <View style={{ width: 22, height: 22 }}>
       <View
@@ -145,12 +145,12 @@ function SearchIcon({ color }: { color: string }) {
       <View
         style={{
           position: "absolute",
-          bottom: 0,
-          right: 0,
-          width: 2,
-          height: 9,
+          top: 10,
+          left: 14,
+          width: 2.5,
+          height: 8,
           backgroundColor: color,
-          borderRadius: 1,
+          borderRadius: 1.5,
           transform: [{ rotate: "45deg" }],
         }}
       />
@@ -323,19 +323,11 @@ function AppContent(): React.ReactElement {
   const handleSplashFinish = () => setSplashDone(true);
   const handleAuthSuccess = () => setShowAuth(false);
 
-  if (!fontsLoaded && splashDone) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: C.bg,
-        }}
-      >
-        <ActivityIndicator color={C.accent} />
-      </View>
-    );
+  // Block rendering until fonts are ready so the splash always shows the correct
+  // Instrument Serif / Hanken Grotesk typefaces (not the system fallback).
+  // The cream background matches the splash BG so there's no colour flash.
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: "#FFFDF9" }} />;
   }
 
   return (

@@ -32,13 +32,11 @@ const BAR_GAP = 2;
 const WAVE_H  = 140; // total height of waveform area (bars grow ±70px from center)
 const MAX_BAR = WAVE_H * 0.48; // max bar half-height
 
-// Dome envelope: center bars tallest, edges shortest (sin curve)
-// Plus per-bar variation seeds from the HTML prototype
-const DOME_MULTIPLIERS = Array.from({ length: BARS }, (_, i) => {
-  const dome = Math.sin(Math.PI * i / (BARS - 1)); // 0→1→0 across bars
-  const seed = ((i % 7) * 0.44 + (i % 3) * 0.71) % 1.0;
-  return dome * (0.5 + seed * 0.5);
-});
+// Dome envelope: matches listen.html exactly — 0.32 at edges, 1.0 at centre
+// Bars at the edges are never invisible; they still show at 32% of max height
+const DOME_MULTIPLIERS = Array.from({ length: BARS }, (_, i) =>
+  0.32 + 0.68 * Math.sin(Math.PI * i / (BARS - 1)),
+);
 
 // Horizontal gradient: coral → violet → jade (matches listen.html)
 function lerpColor(
@@ -130,7 +128,11 @@ export default function ListenScreen({ navigation }: any) {
   const pingLoop2   = useRef<any>(null);
   const meteringRef = useRef<number | null>(null);
   // Exponential smoothing state for amplitude (matches listen.html ampCurrent logic)
-  const ampRef = useRef(0.04);
+  const ampRef             = useRef(0.04);
+  // Accumulated transcript text across all chunks — used for final search
+  const accumulatedTextRef = useRef('');
+  // Timer handle for the 3.5 s chunk cycle
+  const chunkTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (recorderState.metering !== undefined && recorderState.metering !== null) {
@@ -248,7 +250,58 @@ export default function ListenScreen({ navigation }: any) {
     setLiveWords([...updated]);
   }, []);
 
-  // ── Recording (single continuous take — no chunking for accuracy) ────────────
+  // ── Idle shimmer: gentle per-bar oscillation when not recording ─────────────
+  useEffect(() => {
+    if (appState !== "idle") return;
+    let t = 0;
+    const seeds = DOME_MULTIPLIERS.map(() => Math.random() * Math.PI * 2);
+    const timer = setInterval(() => {
+      t += 0.05;
+      waves.forEach((w, i) => {
+        const val = 0.04 + 0.12 * DOME_MULTIPLIERS[i] * (0.5 + 0.5 * Math.sin(t * (1 + i * 0.015) + seeds[i]));
+        Animated.timing(w, { toValue: val, duration: 100, useNativeDriver: false }).start();
+      });
+    }, 100);
+    return () => clearInterval(timer);
+  }, [appState]);
+
+  // ── Chunked transcription: fires every 3.5 s while recording ────────────────
+  // Each chunk is sent to /api/listen/transcribe (Whisper only, no search).
+  // Words appear on screen as each chunk comes back.
+  // On Stop the final in-progress clip is transcribed, then the full accumulated
+  // text is sent to /api/search so the match uses the complete prayer context.
+  const scheduleNextChunk = () => {
+    chunkTimerRef.current = setTimeout(async () => {
+      if (!isRecordingRef.current) return;
+      let uri: string | null = null;
+      try {
+        await recorder.stop();
+        uri = recorder.uri ?? null;
+      } catch { /* recorder may have already stopped externally */ }
+      if (isRecordingRef.current) {
+        try {
+          await recorder.prepareToRecordAsync();
+          recorder.record();
+        } catch { /* restart failed — no more auto-chunks */ }
+        scheduleNextChunk();
+      }
+      if (uri) {
+        PrayerAPI.listenChunk(uri)
+          .then(text => {
+            if (text?.trim()) {
+              accumulatedTextRef.current +=
+                (accumulatedTextRef.current ? " " : "") + text.trim();
+              if (isRecordingRef.current) {
+                appendWords(text.trim().split(/\s+/).filter(Boolean));
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    }, 3500);
+  };
+
+  // ── Recording ────────────────────────────────────────────────────────────────
   const startRecording = async () => {
     try {
       const { granted } = await requestRecordingPermissionsAsync();
@@ -256,14 +309,16 @@ export default function ListenScreen({ navigation }: any) {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
-      isRecordingRef.current = true;
-      liveWordsRef.current   = [];
+      isRecordingRef.current     = true;
+      accumulatedTextRef.current = '';
+      liveWordsRef.current       = [];
       setResults([]);
       setLiveWords([]);
       setAppState("recording");
       startWaveAnimation();
       startHalo();
       startPingRings();
+      scheduleNextChunk();
     } catch {
       setErrorMsg("Failed to start recording. Please try again.");
       setAppState("error");
@@ -272,6 +327,11 @@ export default function ListenScreen({ navigation }: any) {
 
   const stopAndProcess = async () => {
     if (appState !== "recording") return;
+    // Stop chunk cycling first so no new recording restart happens
+    if (chunkTimerRef.current) {
+      clearTimeout(chunkTimerRef.current);
+      chunkTimerRef.current = null;
+    }
     isRecordingRef.current = false;
     stopWaveAnimation();
     stopHalo();
@@ -282,16 +342,23 @@ export default function ListenScreen({ navigation }: any) {
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      if (!uri) throw new Error("No audio captured. Try again in a quieter space.");
 
-      // Send full recording to Whisper — much more accurate than short chunks
-      const fullText = await PrayerAPI.listenChunk(uri);
-      if (!fullText?.trim()) throw new Error("No speech detected. Try speaking more clearly.");
+      // Transcribe the current (final) in-progress chunk
+      if (uri) {
+        try {
+          const finalText = await PrayerAPI.listenChunk(uri);
+          if (finalText?.trim()) {
+            accumulatedTextRef.current +=
+              (accumulatedTextRef.current ? " " : "") + finalText.trim();
+            appendWords(finalText.trim().split(/\s+/).filter(Boolean));
+          }
+        } catch { /* use whatever was accumulated from earlier chunks */ }
+      }
 
-      const words = fullText.trim().split(/\s+/).filter(Boolean);
-      appendWords(words);
+      const searchText = accumulatedTextRef.current.trim();
+      if (!searchText) throw new Error("No speech detected. Try holding the phone closer or speaking for longer.");
 
-      const res     = await PrayerAPI.search({ query: fullText, limit: 5 });
+      const res     = await PrayerAPI.search({ query: searchText, limit: 5 });
       const matches = res.data.results || [];
       setResults(matches);
       stopProcessingAnim();
@@ -312,6 +379,11 @@ export default function ListenScreen({ navigation }: any) {
   };
 
   const reset = () => {
+    if (chunkTimerRef.current) {
+      clearTimeout(chunkTimerRef.current);
+      chunkTimerRef.current = null;
+    }
+    accumulatedTextRef.current = '';
     setAppState("idle");
     setResults([]);
     setLiveWords([]);
@@ -448,7 +520,7 @@ export default function ListenScreen({ navigation }: any) {
                 onPress={stopAndProcess}
                 activeOpacity={0.75}
               >
-                <Text style={[s.cancelTxt, { color: C.text2 }]}>Cancel</Text>
+                <Text style={[s.cancelTxt, { color: C.text2 }]}>Stop</Text>
               </TouchableOpacity>
             </View>
           )}
