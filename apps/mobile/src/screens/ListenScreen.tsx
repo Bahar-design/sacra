@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   Animated,
@@ -25,12 +26,33 @@ import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
 const BARS     = 24;
-const CHUNK_MS = 1500; // 1.5s chunks — faster word appearance
+const CHUNK_MS = 800; // 0.8s chunks for near-real-time word appearance
 
 const BAR_MULTIPLIERS = Array.from(
   { length: BARS },
   (_, i) => 0.4 + (Math.sin(i * 1.3) * 0.5 + 0.5) * 0.9,
 );
+
+// Precompute gradient colors: coral → purple → teal across the 24 bars
+function lerpColor(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number,
+): string {
+  const r = Math.round(a[0] + (b[0] - a[0]) * t);
+  const g = Math.round(a[1] + (b[1] - a[1]) * t);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+const CORAL: [number, number, number]  = [226, 85, 61];
+const PURPLE: [number, number, number] = [92, 75, 150];
+const TEAL: [number, number, number]   = [30, 138, 127];
+const BAR_GRADIENT = Array.from({ length: BARS }, (_, i) => {
+  const t = i / (BARS - 1);
+  return t <= 0.5
+    ? lerpColor(CORAL, PURPLE, t * 2)
+    : lerpColor(PURPLE, TEAL, (t - 0.5) * 2);
+});
 
 const MATCHING_STEPS = [
   "Transcribing…",
@@ -62,6 +84,7 @@ function MicIcon({ color, size = 22 }: { color: string; size?: number }) {
 const ORB_SIZE    = 136;
 const HALO_SIZE   = 280;
 const PING_SIZE   = 190;
+const WAVE_CIRCLE = 220; // diameter of the circular clip around the waveform
 
 export default function ListenScreen({ navigation }: any) {
   const { C } = useTheme();
@@ -407,7 +430,8 @@ export default function ListenScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Waveform stage — layered using absoluteFillObject so everything stays centered */}
+        {/* Waveform stage — tap during recording to stop; orb hidden while capturing */}
+        <TouchableWithoutFeedback onPress={isCapturing ? stopAndProcess : undefined}>
         <View style={s.waveStage}>
           {/* Layer 1: halo glow */}
           <View style={s.stageLayer} pointerEvents="none">
@@ -426,58 +450,60 @@ export default function ListenScreen({ navigation }: any) {
             </>
           )}
 
-          {/* Layer 3: waveform bars */}
+          {/* Layer 3: waveform bars — clipped to circle */}
           <View style={s.stageLayer} pointerEvents="none">
-            <View style={s.waveform}>
-              {waves.map((a, i) => (
-                <Animated.View
-                  key={i}
-                  style={[
-                    s.bar,
-                    {
-                      height: a.interpolate({
-                        inputRange:  [0, 1],
-                        outputRange: [4, isCapturing ? 96 : 28],
-                      }),
-                      opacity: a.interpolate({ inputRange: [0.06, 1], outputRange: [0.18, 0.92] }),
-                      backgroundColor:
-                        appState === "recording"   ? C.accent
-                        : appState === "processing" ? C.accent2
-                        : C.line,
-                    },
-                  ]}
-                />
-              ))}
+            <View style={[s.waveCircle, { borderColor: C.line + "66" }]}>
+              <View style={s.waveform}>
+                {waves.map((a, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      s.bar,
+                      {
+                        height: a.interpolate({
+                          inputRange:  [0, 1],
+                          outputRange: [4, isCapturing ? 200 : 30],
+                        }),
+                        opacity: a.interpolate({ inputRange: [0.06, 1], outputRange: [0.18, 0.92] }),
+                        backgroundColor:
+                          appState === "recording"   ? BAR_GRADIENT[i]
+                          : appState === "processing" ? C.accent2
+                          : C.line,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
           </View>
 
-          {/* Layer 4: ORB — receives touches */}
-          <View style={s.stageLayer}>
-            <Animated.View style={{ transform: [{ scale: orbScale }] }}>
-              <TouchableOpacity
-                style={[s.orb, { backgroundColor: orbColor }]}
-                onPress={
-                  appState === "idle"       ? startRecording
-                  : appState === "recording" ? stopAndProcess
-                  : appState === "error"     ? reset
-                  : undefined
-                }
-                activeOpacity={0.88}
-                disabled={appState === "processing"}
-              >
-                {appState === "processing" ? (
-                  <Animated.Text style={[s.orbSpinner, { color: C.onacc, transform: [{ rotate: spin }] }]}>
-                    ↻
-                  </Animated.Text>
-                ) : appState === "recording" ? (
-                  <View style={[s.stopIcon, { backgroundColor: C.onacc }]} />
-                ) : (
-                  <MicIcon color={C.onacc} size={26} />
-                )}
-              </TouchableOpacity>
-            </Animated.View>
-          </View>
+          {/* Layer 4: ORB — hidden during recording; waveStage itself is the touch target then */}
+          {!isCapturing && (
+            <View style={s.stageLayer}>
+              <Animated.View style={{ transform: [{ scale: orbScale }] }}>
+                <TouchableOpacity
+                  style={[s.orb, { backgroundColor: orbColor }]}
+                  onPress={
+                    appState === "idle"   ? startRecording
+                    : appState === "error" ? reset
+                    : undefined
+                  }
+                  activeOpacity={0.88}
+                  disabled={appState === "processing"}
+                >
+                  {appState === "processing" ? (
+                    <Animated.Text style={[s.orbSpinner, { color: C.onacc, transform: [{ rotate: spin }] }]}>
+                      ↻
+                    </Animated.Text>
+                  ) : (
+                    <MicIcon color={C.onacc} size={26} />
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          )}
         </View>
+        </TouchableWithoutFeedback>
 
         {/* Status label below orb */}
         <View style={s.statusRow}>
@@ -485,10 +511,19 @@ export default function ListenScreen({ navigation }: any) {
             <Text style={s.statusLabel}>Tap the orb to begin</Text>
           )}
           {appState === "recording" && (
-            <View style={s.listeningBadge}>
-              <View style={[s.listeningDot, { backgroundColor: C.accent }]} />
-              <Text style={[s.listeningTxt, { color: C.accent }]}>Listening · tap to stop</Text>
-            </View>
+            <>
+              <View style={s.listeningBadge}>
+                <View style={[s.listeningDot, { backgroundColor: C.accent }]} />
+                <Text style={[s.listeningTxt, { color: C.accent }]}>Listening</Text>
+              </View>
+              <TouchableOpacity
+                style={[s.cancelBtn, { borderColor: C.line }]}
+                onPress={stopAndProcess}
+                activeOpacity={0.75}
+              >
+                <Text style={[s.cancelTxt, { color: C.text2 }]}>Cancel</Text>
+              </TouchableOpacity>
+            </>
           )}
           {appState === "processing" && (
             <View style={s.listeningBadge}>
@@ -533,7 +568,7 @@ export default function ListenScreen({ navigation }: any) {
                   <View style={s.resultMeta}>
                     <View style={[s.resultDot, { backgroundColor: color }]} />
                     <Text style={[s.resultRel, { color }]}>
-                      {icon}  {name}{m.language ? ` · ${m.language}` : ""}
+                      {icon}  {name}
                     </Text>
                   </View>
                   <Text style={s.resultTitle}>{m.title}</Text>
@@ -641,11 +676,20 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       borderRadius: PING_SIZE / 2,
       borderWidth: 1.5,
     },
+    waveCircle: {
+      width: WAVE_CIRCLE,
+      height: WAVE_CIRCLE,
+      borderRadius: WAVE_CIRCLE / 2,
+      overflow: "hidden",
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     waveform: {
       flexDirection: "row",
       alignItems: "center",
       gap: 3,
-      height: 120,
+      height: WAVE_CIRCLE,
       justifyContent: "center",
     },
     bar: { width: 3.5, borderRadius: 2 },
@@ -707,6 +751,19 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     resultRel:     { fontFamily: "HankenGrotesk_700Bold", fontSize: 11, letterSpacing: 1, textTransform: "uppercase" },
     resultTitle:   { fontFamily: "InstrumentSerif_400Regular", fontSize: 30, lineHeight: 32, color: C.text, marginBottom: 9 },
     resultExcerpt: { fontFamily: "Newsreader_400Regular_Italic", fontSize: 18, lineHeight: 26, color: C.text2 },
+
+    cancelBtn: {
+      marginTop: 14,
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingVertical: 11,
+      paddingHorizontal: 36,
+    },
+    cancelTxt: {
+      fontFamily: "HankenGrotesk_500Medium",
+      fontSize: 15,
+      letterSpacing: 0.2,
+    },
 
     noMatch:  { fontFamily: "Newsreader_400Regular_Italic", fontSize: 17, color: C.text3, textAlign: "center", marginVertical: 20, lineHeight: 25 },
     againBtn: { alignSelf: "center", marginTop: 16 },

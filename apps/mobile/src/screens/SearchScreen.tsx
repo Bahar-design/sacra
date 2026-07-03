@@ -86,7 +86,6 @@ export default function SearchScreen({ navigation }: any) {
         <View style={s.cardBody}>
           <View style={s.cardMeta}>
             <Text style={[s.cardRel, { color }]}>{name}</Text>
-            {item.language ? <Text style={s.cardLang}> · {item.language}</Text> : null}
           </View>
           <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
           <Text style={s.cardExcerpt} numberOfLines={1}>{item.body}</Text>

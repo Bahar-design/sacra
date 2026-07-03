@@ -3,8 +3,17 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Text, StatusBar, View, ActivityIndicator, TouchableOpacity } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import {
+  Text,
+  StatusBar,
+  View,
+  ActivityIndicator,
+  TouchableOpacity,
+} from "react-native";
 import { useFonts } from "expo-font";
 import {
   HankenGrotesk_400Regular,
@@ -81,16 +90,37 @@ function HomeStack(): React.ReactElement {
 
 function DiscoverIcon({ color }: { color: string }) {
   // 4-pointed star (matches Claude Design path d="M12 2.5c.55 4.6 2.9 6.95 7.5 7.5...")
-  return <Text style={{ color, fontSize: 21, lineHeight: 23, includeFontPadding: false }}>✦</Text>;
+  return (
+    <Text
+      style={{ color, fontSize: 21, lineHeight: 23, includeFontPadding: false }}
+    >
+      ✦
+    </Text>
+  );
 }
 
 function ListenIcon({ color }: { color: string }) {
   // 5 vertical bars matching M4 11v2 M8 7v10 M12 3v18 M16 7v10 M20 11v2
   const heights = [3, 11, 19, 11, 3];
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 2.5, height: 22 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2.5,
+        height: 22,
+      }}
+    >
       {heights.map((h, i) => (
-        <View key={i} style={{ width: 2.5, height: h, backgroundColor: color, borderRadius: 1.5 }} />
+        <View
+          key={i}
+          style={{
+            width: 2.5,
+            height: h,
+            backgroundColor: color,
+            borderRadius: 1.5,
+          }}
+        />
       ))}
     </View>
   );
@@ -98,21 +128,56 @@ function ListenIcon({ color }: { color: string }) {
 
 function SearchIcon({ color }: { color: string }) {
   return (
-    <Text style={{ fontSize: 18, color, includeFontPadding: false, textAlignVertical: "center" }}>
-      🔍
+    <Text
+      style={{
+        fontSize: 18,
+        color,
+        includeFontPadding: false,
+        textAlignVertical: "center",
+      }}
+    >
+      🔍︎
     </Text>
   );
 }
 
 function SacredIcon({ color }: { color: string }) {
   // Filled bookmark matching M6 3h12a1 1 0 011 1v17l-7-4.5L5 21V4a1 1 0 011-1z
-  const W = 15, bodyH = 14, tipH = 7;
+  const W = 15,
+    bodyH = 14,
+    tipH = 7;
   return (
     <View style={{ width: W, height: bodyH + tipH }}>
-      <View style={{ width: W, height: bodyH, backgroundColor: color, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+      <View
+        style={{
+          width: W,
+          height: bodyH,
+          backgroundColor: color,
+          borderTopLeftRadius: 2,
+          borderTopRightRadius: 2,
+        }}
+      />
       <View style={{ flexDirection: "row" }}>
-        <View style={{ width: 0, height: 0, borderTopWidth: tipH, borderTopColor: color, borderRightWidth: W / 2, borderRightColor: "transparent" }} />
-        <View style={{ width: 0, height: 0, borderTopWidth: tipH, borderTopColor: color, borderLeftWidth: W / 2, borderLeftColor: "transparent" }} />
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderTopWidth: tipH,
+            borderTopColor: color,
+            borderRightWidth: W / 2,
+            borderRightColor: "transparent",
+          }}
+        />
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderTopWidth: tipH,
+            borderTopColor: color,
+            borderLeftWidth: W / 2,
+            borderLeftColor: "transparent",
+          }}
+        />
       </View>
     </View>
   );
@@ -120,9 +185,9 @@ function SacredIcon({ color }: { color: string }) {
 
 const TAB_ROUTES = [
   { name: "Discover", Icon: DiscoverIcon },
-  { name: "Listen",   Icon: ListenIcon   },
-  { name: "Search",   Icon: SearchIcon   },
-  { name: "Sacred",   Icon: SacredIcon   },
+  { name: "Listen", Icon: ListenIcon },
+  { name: "Search", Icon: SearchIcon },
+  { name: "Sacred", Icon: SacredIcon },
 ] as const;
 
 // Floating pill tab bar — matches Claude Design: left:18 right:18 bottom:18 h:66 radius:24 glass
@@ -131,26 +196,28 @@ function FloatingTabBar({ state, navigation }: any): React.ReactElement {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{
-      position: "absolute",
-      left: 18,
-      right: 18,
-      bottom: Math.max(insets.bottom + 8, 18),
-      height: 66,
-      borderRadius: 24,
-      backgroundColor: C.surface,
-      borderWidth: 1,
-      borderColor: C.hair,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-around",
-      paddingHorizontal: 6,
-      elevation: 24,
-      shadowColor: C.shadow,
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 1,
-      shadowRadius: 20,
-    }}>
+    <View
+      style={{
+        position: "absolute",
+        left: 18,
+        right: 18,
+        bottom: Math.max(insets.bottom + 8, 18),
+        height: 66,
+        borderRadius: 24,
+        backgroundColor: C.surface,
+        borderWidth: 1,
+        borderColor: C.hair,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-around",
+        paddingHorizontal: 6,
+        elevation: 24,
+        shadowColor: C.shadow,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      }}
+    >
       {TAB_ROUTES.map(({ name, Icon }, index) => {
         const focused = state.index === index;
         const color = focused ? C.accent : C.text3;
@@ -158,17 +225,25 @@ function FloatingTabBar({ state, navigation }: any): React.ReactElement {
           <TouchableOpacity
             key={name}
             onPress={() => navigation.navigate(name)}
-            style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 10 }}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
+              paddingVertical: 10,
+            }}
             activeOpacity={0.7}
           >
             <Icon color={color} />
-            <Text style={{
-              fontFamily: "HankenGrotesk_700Bold",
-              fontSize: 10,
-              letterSpacing: 0.2,
-              color,
-              includeFontPadding: false,
-            }}>
+            <Text
+              style={{
+                fontFamily: "HankenGrotesk_700Bold",
+                fontSize: 10,
+                letterSpacing: 0.2,
+                color,
+                includeFontPadding: false,
+              }}
+            >
               {name}
             </Text>
           </TouchableOpacity>
@@ -185,9 +260,9 @@ function MainTabs(): React.ReactElement {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Discover" component={HomeStack} />
-      <Tab.Screen name="Listen"   component={ListenStack} />
-      <Tab.Screen name="Search"   component={SearchStack} />
-      <Tab.Screen name="Sacred"   component={ProfileStack} />
+      <Tab.Screen name="Listen" component={ListenStack} />
+      <Tab.Screen name="Search" component={SearchStack} />
+      <Tab.Screen name="Sacred" component={ProfileStack} />
     </Tab.Navigator>
   );
 }
@@ -219,7 +294,9 @@ function AppContent(): React.ReactElement {
       setAuthReady(true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) setShowAuth(true);
     });
 
@@ -227,11 +304,18 @@ function AppContent(): React.ReactElement {
   }, []);
 
   const handleSplashFinish = () => setSplashDone(true);
-  const handleAuthSuccess  = () => setShowAuth(false);
+  const handleAuthSuccess = () => setShowAuth(false);
 
   if (!fontsLoaded && splashDone) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: C.bg,
+        }}
+      >
         <ActivityIndicator color={C.accent} />
       </View>
     );

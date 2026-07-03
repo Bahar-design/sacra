@@ -310,10 +310,9 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         <Text style={s.title}>{prayer.title}</Text>
 
         {/* Meta chips */}
-        {(prayer.language || prayer.tradition) && (
+        {prayer.tradition && (
           <View style={s.metaRow}>
-            {prayer.language  && <Text style={s.metaChip}>{prayer.language}</Text>}
-            {prayer.tradition && <Text style={s.metaChip}>{prayer.tradition}</Text>}
+            <Text style={s.metaChip}>{prayer.tradition}</Text>
           </View>
         )}
 

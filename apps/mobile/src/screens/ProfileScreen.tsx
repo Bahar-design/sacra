@@ -1,4 +1,7 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
+
+// Module-level: survives component unmounts so we can detect account switches
+let _activeUserId: string | null = null;
 import {
   View,
   Text,
@@ -20,7 +23,6 @@ export default function ProfileScreen({ navigation }: any) {
   const [saved, setSaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
-  const lastUserIdRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -29,11 +31,11 @@ export default function ProfileScreen({ navigation }: any) {
         if (user) {
           setUserEmail(user.email ?? null);
           setIsGuest(false);
-          // Different account signed in — clear previous user's local cache
-          if (lastUserIdRef.current !== null && lastUserIdRef.current !== user.id) {
+          // Different account detected — clear previous user's cached prayers
+          if (_activeUserId !== null && _activeUserId !== user.id) {
             clearAllOfflinePrayers();
           }
-          lastUserIdRef.current = user.id;
+          _activeUserId = user.id;
           // Show local SQLite immediately while Supabase syncs
           setSaved(getAllOfflinePrayers());
           // Sync from Supabase — restores prayers after any sign-out/sign-in cycle
@@ -76,8 +78,10 @@ export default function ProfileScreen({ navigation }: any) {
         text: "Sign out",
         style: "destructive",
         onPress: async () => {
-          // Keep local SQLite cache intact — restored when same user signs back in
+          // Clear local cache on sign-out so a different account never sees these prayers
+          clearAllOfflinePrayers();
           setSaved([]);
+          _activeUserId = null;
           await supabase.auth.signOut();
         },
       },

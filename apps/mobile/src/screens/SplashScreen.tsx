@@ -23,8 +23,6 @@ const CONTAINER_H = 200;
 const CTR_LEFT = (width - CONTAINER_W) / 2;
 const CTR_TOP  = height / 2 - 163;
 
-const ORB_SIZE = 130;
-
 // Floating dots — exact positions from Claude Design
 const DOTS = [
   { color: "#3E6FB0", size: 16, x: CTR_LEFT + 30,  y: CTR_TOP + 24  },
@@ -49,6 +47,8 @@ export default function SplashScreen({ onFinish }: Props) {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
   const orbScale  = useRef(new Animated.Value(1)).current;
+  const orbDriftX = useRef(new Animated.Value(0)).current;
+  const orbDriftY = useRef(new Animated.Value(0)).current;
   const exitAnim  = useRef(new Animated.Value(1)).current;
   const dotAnims  = useRef(DOTS.map(() => ({
     x: new Animated.Value(0),
@@ -61,6 +61,24 @@ export default function SplashScreen({ onFinish }: Props) {
       Animated.sequence([
         Animated.timing(orbScale, { toValue: 1.06, duration: 2000, useNativeDriver: true }),
         Animated.timing(orbScale, { toValue: 1,    duration: 2000, useNativeDriver: true }),
+      ]),
+    ).start();
+
+    // Orb slow drift — gentle float across 12–15px
+    Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(orbDriftX, { toValue: 14,  duration: 4200, useNativeDriver: true }),
+          Animated.timing(orbDriftY, { toValue: -10, duration: 4200, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(orbDriftX, { toValue: -11, duration: 4800, useNativeDriver: true }),
+          Animated.timing(orbDriftY, { toValue: 9,   duration: 4800, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(orbDriftX, { toValue: 0, duration: 4000, useNativeDriver: true }),
+          Animated.timing(orbDriftY, { toValue: 0, duration: 4000, useNativeDriver: true }),
+        ]),
       ]),
     ).start();
 
@@ -126,49 +144,23 @@ export default function SplashScreen({ onFinish }: Props) {
         />
       ))}
 
-      {/* Orb glow ring — separate from clip container so it bleeds out */}
+      {/* Soft orb — stacked concentric circles simulate radial-gradient blur */}
       <Animated.View
         style={[
-          s.orbGlowWrap,
+          s.softOrbWrap,
           {
-            left: (width - ORB_SIZE) / 2 - 40,
-            top:  CTR_TOP + (CONTAINER_H - ORB_SIZE) / 2 - 40,
-            transform: [{ scale: orbScale }],
+            transform: [{ scale: orbScale }, { translateX: orbDriftX }, { translateY: orbDriftY }],
           },
         ]}
       >
-        <View style={s.orbGlow} />
-      </Animated.View>
-
-      {/* Orb — clip container so quadrant overlays conform to circle shape */}
-      <Animated.View
-        style={[
-          s.orbWrap,
-          {
-            left: (width - ORB_SIZE) / 2,
-            top:  CTR_TOP + (CONTAINER_H - ORB_SIZE) / 2,
-            transform: [{ scale: orbScale }],
-          },
-        ]}
-      >
-        {/* Base orb — accent color */}
-        <View style={[s.orb, { backgroundColor: C.accent }]} />
-        {/* accent2 top-right quadrant overlay */}
-        <View style={{
-          position: "absolute",
-          right: 0, top: 0,
-          width: ORB_SIZE * 0.6, height: ORB_SIZE * 0.6,
-          backgroundColor: C.accent2,
-          opacity: 0.55,
-        }} />
-        {/* accent3 bottom-left quadrant overlay */}
-        <View style={{
-          position: "absolute",
-          left: 0, bottom: 0,
-          width: ORB_SIZE * 0.55, height: ORB_SIZE * 0.55,
-          backgroundColor: C.accent3,
-          opacity: 0.45,
-        }} />
+        <View style={[s.softRing, { width: 340, height: 340, borderRadius: 170, opacity: isEvening ? 0.07 : 0.09, backgroundColor: "#C490C8" }]} />
+        <View style={[s.softRing, { width: 280, height: 280, borderRadius: 140, opacity: isEvening ? 0.13 : 0.16, backgroundColor: "#9A70C4" }]} />
+        <View style={[s.softRing, { width: 225, height: 225, borderRadius: 113, opacity: isEvening ? 0.24 : 0.28, backgroundColor: "#7B52A8" }]} />
+        <View style={[s.softRing, { width: 172, height: 172, borderRadius: 86,  opacity: isEvening ? 0.40 : 0.46, backgroundColor: "#6848A0" }]} />
+        <View style={[s.softRing, { width: 120, height: 120, borderRadius: 60,  opacity: isEvening ? 0.58 : 0.65, backgroundColor: "#7060B8" }]} />
+        {/* Inner highlight spot — slightly offset up-left */}
+        <View style={[s.softRing, { width: 64, height: 64, borderRadius: 32, opacity: isEvening ? 0.50 : 0.55, backgroundColor: "#D4BEF0",
+          transform: [{ translateX: -14 }, { translateY: -16 }] }]} />
       </Animated.View>
 
       {/* Text block — entrance animation */}
@@ -220,31 +212,18 @@ const s = StyleSheet.create({
     opacity: 0.82,
   },
 
-  orbGlowWrap: {
+  // Soft orb — centered at the orb position, large enough for outermost ring (340px)
+  softOrbWrap: {
     position: "absolute",
-    width: ORB_SIZE + 80,
-    height: ORB_SIZE + 80,
+    width: 340,
+    height: 340,
+    left: width / 2 - 170,
+    top: CTR_TOP + CONTAINER_H / 2 - 170,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  orbGlow: {
-    width: ORB_SIZE + 80,
-    height: ORB_SIZE + 80,
-    borderRadius: (ORB_SIZE + 80) / 2,
-    backgroundColor: isEvening
-      ? "rgba(255,110,84,0.16)"
-      : "rgba(226,85,61,0.13)",
-  },
-  orbWrap: {
+  softRing: {
     position: "absolute",
-    width: ORB_SIZE,
-    height: ORB_SIZE,
-    overflow: "hidden",
-    borderRadius: ORB_SIZE / 2,
-  },
-  orb: {
-    position: "absolute",
-    width: ORB_SIZE,
-    height: ORB_SIZE,
-    borderRadius: ORB_SIZE / 2,
   },
 
   content: {
