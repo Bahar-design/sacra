@@ -1,7 +1,4 @@
 import { useState, useCallback, useMemo } from "react";
-
-// Module-level: survives component unmounts so we can detect account switches
-let _activeUserId: string | null = null;
 import {
   View,
   Text,
@@ -16,12 +13,13 @@ import { useTheme } from "../lib/ThemeContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import ThemeToggle from "../components/ThemeToggle";
 import { supabase, getSaved } from "../lib/supabase";
-import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved, clearAllOfflinePrayers } from "../lib/offlineStorage";
+import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved } from "../lib/offlineStorage";
 
 export default function ProfileScreen({ navigation }: any) {
   const { C } = useTheme();
   const [saved, setSaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
 
   useFocusEffect(
@@ -30,15 +28,11 @@ export default function ProfileScreen({ navigation }: any) {
         const user = session?.user ?? null;
         if (user) {
           setUserEmail(user.email ?? null);
+          setUserId(user.id);
           setIsGuest(false);
-          // Different account detected — clear previous user's cached prayers
-          if (_activeUserId !== null && _activeUserId !== user.id) {
-            clearAllOfflinePrayers();
-          }
-          _activeUserId = user.id;
-          // Show local SQLite immediately while Supabase syncs
-          setSaved(getAllOfflinePrayers());
-          // Sync from Supabase — restores prayers after any sign-out/sign-in cycle
+          // Show local SQLite immediately (per-user, no cross-account bleed)
+          setSaved(getAllOfflinePrayers(user.id));
+          // Sync from Supabase — adds any prayers saved on other devices
           try {
             const { data, error } = await getSaved(user.id);
             if (error) throw error;
@@ -47,7 +41,6 @@ export default function ProfileScreen({ navigation }: any) {
                 .map((row: any) => {
                   const p = row.prayers;
                   if (!p) return null;
-                  // Flatten the nested religions join so saveToDevice gets the name
                   return {
                     ...p,
                     religions: p.religions ?? { name: "", icon_emoji: "" },
@@ -55,16 +48,16 @@ export default function ProfileScreen({ navigation }: any) {
                 })
                 .filter(Boolean);
               prayers.forEach((p: any) => {
-                if (p && !isPrayerSaved(p.id)) saveToDevice(p);
+                if (p && !isPrayerSaved(p.id, user.id)) saveToDevice(p, user.id);
               });
             }
-            // Always refresh from local DB after sync attempt
-            setSaved(getAllOfflinePrayers());
+            setSaved(getAllOfflinePrayers(user.id));
           } catch {
             // Network error — local data already shown above
           }
         } else {
           setIsGuest(true);
+          setUserId(null);
           setSaved([]);
         }
       });
@@ -78,10 +71,9 @@ export default function ProfileScreen({ navigation }: any) {
         text: "Sign out",
         style: "destructive",
         onPress: async () => {
-          // Clear local cache on sign-out so a different account never sees these prayers
-          clearAllOfflinePrayers();
+          // Keep SQLite intact — same user's prayers survive sign-out/sign-in
           setSaved([]);
-          _activeUserId = null;
+          setUserId(null);
           await supabase.auth.signOut();
         },
       },
@@ -89,7 +81,7 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const handleRemove = (id: string) => {
-    removeFromDevice(id);
+    if (userId) removeFromDevice(id, userId);
     setSaved((prev) => prev.filter((p) => p.id !== id));
   };
 

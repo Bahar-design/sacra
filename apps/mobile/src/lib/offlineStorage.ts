@@ -2,7 +2,7 @@ import * as SQLite from "expo-sqlite";
 
 const db = SQLite.openDatabaseSync("sacra_offline.db");
 
-// Creates the local table on first app launch
+// Creates the local table on first app launch (user_id scopes prayers per account)
 export function initOfflineDB() {
   db.execSync(`
     CREATE TABLE IF NOT EXISTS offline_prayers (
@@ -15,17 +15,24 @@ export function initOfflineDB() {
       language    TEXT,
       occasion    TEXT,
       mood        TEXT,
+      user_id     TEXT DEFAULT '',
       saved_at    INTEGER DEFAULT (strftime('%s','now'))
     );
   `);
+  // Migrate existing installs: add user_id column if missing
+  try {
+    db.execSync("ALTER TABLE offline_prayers ADD COLUMN user_id TEXT DEFAULT ''");
+  } catch {
+    // Column already exists — safe to ignore
+  }
 }
 
-// Save prayer to device — called when user taps Save
-export function saveToDevice(prayer: any) {
+// Save prayer to device — scoped to the signed-in user
+export function saveToDevice(prayer: any, userId: string) {
   db.runSync(
     `INSERT OR REPLACE INTO offline_prayers
-      (id,title,body,religion,tradition,source,language,occasion,mood)
-      VALUES (?,?,?,?,?,?,?,?,?)`,
+      (id,title,body,religion,tradition,source,language,occasion,mood,user_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
       prayer.id,
       prayer.title,
@@ -36,37 +43,47 @@ export function saveToDevice(prayer: any) {
       prayer.language || "en",
       JSON.stringify(prayer.occasion || []),
       JSON.stringify(prayer.mood || []),
+      userId,
     ],
   );
 }
 
-// Remove prayer from local storage
-export function removeFromDevice(prayerId: string) {
-  db.runSync("DELETE FROM offline_prayers WHERE id = ?", [prayerId]);
+// Remove prayer — only affects this user's collection
+export function removeFromDevice(prayerId: string, userId: string) {
+  db.runSync("DELETE FROM offline_prayers WHERE id = ? AND user_id = ?", [prayerId, userId]);
 }
 
-// Get all saved prayers — works with zero connectivity
-export function getAllOfflinePrayers(): any[] {
-  return db.getAllSync("SELECT * FROM offline_prayers ORDER BY saved_at DESC");
-}
-
-// Check instantly if a prayer is saved — no network needed
-export function isPrayerSaved(prayerId: string): boolean {
-  const row = db.getFirstSync("SELECT id FROM offline_prayers WHERE id = ?", [
-    prayerId,
-  ]);
-  return !!row;
-}
-
-// Offline text search — works without internet
-export function searchOffline(query: string): any[] {
+// Get all saved prayers for this user — works with zero connectivity
+export function getAllOfflinePrayers(userId: string): any[] {
   return db.getAllSync(
-    `SELECT * FROM offline_prayers WHERE title LIKE ? OR body LIKE ? ORDER BY saved_at DESC`,
-    [`%${query}%`, `%${query}%`],
+    "SELECT * FROM offline_prayers WHERE user_id = ? ORDER BY saved_at DESC",
+    [userId],
   );
 }
 
-// Clear all saved prayers — called on sign out so the next user starts fresh
+// Check instantly if a prayer is saved by this user
+export function isPrayerSaved(prayerId: string, userId: string): boolean {
+  const row = db.getFirstSync(
+    "SELECT id FROM offline_prayers WHERE id = ? AND user_id = ?",
+    [prayerId, userId],
+  );
+  return !!row;
+}
+
+// Offline text search — scoped to this user
+export function searchOffline(query: string, userId: string): any[] {
+  return db.getAllSync(
+    `SELECT * FROM offline_prayers WHERE (title LIKE ? OR body LIKE ?) AND user_id = ? ORDER BY saved_at DESC`,
+    [`%${query}%`, `%${query}%`, userId],
+  );
+}
+
+// Clear one user's cached prayers (used only when needed, not on every sign-out)
+export function clearUserPrayers(userId: string) {
+  db.runSync("DELETE FROM offline_prayers WHERE user_id = ?", [userId]);
+}
+
+// Admin / test utility
 export function clearAllOfflinePrayers() {
   db.runSync("DELETE FROM offline_prayers");
 }

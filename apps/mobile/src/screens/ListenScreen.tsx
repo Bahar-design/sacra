@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   Animated,
@@ -25,33 +24,38 @@ import ThemeToggle from "../components/ThemeToggle";
 import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
-const BARS     = 24;
-const CHUNK_MS = 800; // 0.8s chunks for near-real-time word appearance
 
-const BAR_MULTIPLIERS = Array.from(
-  { length: BARS },
-  (_, i) => 0.4 + (Math.sin(i * 1.3) * 0.5 + 0.5) * 0.9,
-);
+// 42 bars matching the listen.html canvas design
+const BARS    = 42;
+const BAR_W   = 4;
+const BAR_GAP = 2;
+const WAVE_H  = 140; // total height of waveform area (bars grow ±70px from center)
+const MAX_BAR = WAVE_H * 0.48; // max bar half-height
 
-// Precompute gradient colors: coral → purple → teal across the 24 bars
+// Dome envelope: center bars tallest, edges shortest (sin curve)
+// Plus per-bar variation seeds from the HTML prototype
+const DOME_MULTIPLIERS = Array.from({ length: BARS }, (_, i) => {
+  const dome = Math.sin(Math.PI * i / (BARS - 1)); // 0→1→0 across bars
+  const seed = ((i % 7) * 0.44 + (i % 3) * 0.71) % 1.0;
+  return dome * (0.5 + seed * 0.5);
+});
+
+// Horizontal gradient: coral → violet → jade (matches listen.html)
 function lerpColor(
   a: [number, number, number],
   b: [number, number, number],
   t: number,
 ): string {
-  const r = Math.round(a[0] + (b[0] - a[0]) * t);
-  const g = Math.round(a[1] + (b[1] - a[1]) * t);
-  const bl = Math.round(a[2] + (b[2] - a[2]) * t);
-  return `rgb(${r},${g},${bl})`;
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
 }
-const CORAL: [number, number, number]  = [226, 85, 61];
-const PURPLE: [number, number, number] = [92, 75, 150];
-const TEAL: [number, number, number]   = [30, 138, 127];
-const BAR_GRADIENT = Array.from({ length: BARS }, (_, i) => {
+const CORAL:  [number, number, number] = [226, 85, 61];
+const VIOLET: [number, number, number] = [92, 75, 150];
+const JADE:   [number, number, number] = [30, 138, 127];
+const BAR_COLORS = Array.from({ length: BARS }, (_, i) => {
   const t = i / (BARS - 1);
   return t <= 0.5
-    ? lerpColor(CORAL, PURPLE, t * 2)
-    : lerpColor(PURPLE, TEAL, (t - 0.5) * 2);
+    ? lerpColor(CORAL, VIOLET, t * 2)
+    : lerpColor(VIOLET, JADE, (t - 0.5) * 2);
 });
 
 const MATCHING_STEPS = [
@@ -61,44 +65,38 @@ const MATCHING_STEPS = [
   "Finding matches…",
 ];
 
-// Word entry with its own animation value for scWord entrance
-type LiveWord = { text: string; anim: Animated.Value; animY: Animated.Value };
-
-// Mic icon — vertical bars style matching Claude Design
-function MicIcon({ color, size = 22 }: { color: string; size?: number }) {
+// Mic icon — filled pill shape (matches the listen.html CTA button icon)
+function MicIcon({ color, size = 20 }: { color: string; size?: number }) {
   const bodyW = size * 0.46;
-  const bodyH = size * 0.58;
-  const stemW = size * 0.07;
-  const stemH = size * 0.2;
-  const baseW = size * 0.46;
-  const arcH  = size * 0.06;
+  const bodyH = size * 0.56;
+  const stemH = size * 0.18;
+  const baseW = size * 0.44;
   return (
     <View style={{ width: size * 0.7, height: size, alignItems: "center" }}>
       <View style={{ width: bodyW, height: bodyH, borderRadius: bodyW / 2, backgroundColor: color }} />
-      <View style={{ width: stemW, height: stemH, backgroundColor: color }} />
-      <View style={{ width: baseW, height: arcH, borderRadius: arcH / 2, backgroundColor: color }} />
+      <View style={{ width: size * 0.07, height: stemH, backgroundColor: color }} />
+      <View style={{ width: baseW, height: size * 0.06, borderRadius: 3, backgroundColor: color }} />
     </View>
   );
 }
 
-const ORB_SIZE    = 136;
-const HALO_SIZE   = 280;
-const PING_SIZE   = 190;
-const WAVE_CIRCLE = 220; // diameter of the circular clip around the waveform
+const HALO_SIZE = 260;
+const PING_SIZE = 180;
+
+// Word entry with its own animation values
+type LiveWord = { text: string; anim: Animated.Value; animY: Animated.Value };
 
 export default function ListenScreen({ navigation }: any) {
   const { C } = useTheme();
-  const [appState, setAppState] = useState<State>("idle");
-  const [results, setResults]   = useState<any[]>([]);
-  const [liveWords, setLiveWords] = useState<LiveWord[]>([]);
-  const [errorMsg, setErrorMsg]   = useState("");
+  const [appState, setAppState]     = useState<State>("idle");
+  const [results, setResults]       = useState<any[]>([]);
+  const [liveWords, setLiveWords]   = useState<LiveWord[]>([]);
+  const [errorMsg, setErrorMsg]     = useState("");
   const [matchingStep, setMatchingStep] = useState(MATCHING_STEPS[0]);
   const [religionsMap, setReligionsMap] = useState<Record<string, string>>({});
 
-  const isRecordingRef   = useRef(false);
-  const chunkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const accumulatedRef   = useRef<string[]>([]);
-  const liveWordsRef     = useRef<LiveWord[]>([]);
+  const isRecordingRef = useRef(false);
+  const liveWordsRef   = useRef<LiveWord[]>([]);
 
   useEffect(() => {
     getReligionsMap().then(setReligionsMap).catch(console.error);
@@ -119,13 +117,11 @@ export default function ListenScreen({ navigation }: any) {
   const recorderState = useAudioRecorderState(recorder, 80);
 
   // ── Animated values ─────────────────────────────────────────────────────────
-  const waves     = useRef(Array.from({ length: BARS }, () => new Animated.Value(0.08))).current;
-  const spinAnim  = useRef(new Animated.Value(0)).current;
-  const haloAnim  = useRef(new Animated.Value(0)).current;
+  const waves    = useRef(Array.from({ length: BARS }, () => new Animated.Value(0.04))).current;
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const haloAnim = useRef(new Animated.Value(0)).current;
   const pingAnim1 = useRef(new Animated.Value(0)).current;
   const pingAnim2 = useRef(new Animated.Value(0)).current;
-  const orbScale  = useRef(new Animated.Value(1)).current;
-  const orbPulse  = useRef<any>(null);
 
   const stepTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
   const waveTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -133,27 +129,14 @@ export default function ListenScreen({ navigation }: any) {
   const pingLoop1   = useRef<any>(null);
   const pingLoop2   = useRef<any>(null);
   const meteringRef = useRef<number | null>(null);
+  // Exponential smoothing state for amplitude (matches listen.html ampCurrent logic)
+  const ampRef = useRef(0.04);
 
   useEffect(() => {
     if (recorderState.metering !== undefined && recorderState.metering !== null) {
       meteringRef.current = recorderState.metering;
     }
   }, [recorderState.metering]);
-
-  // ── Orb breathe pulse (recording state) ────────────────────────────────────
-  const startOrbPulse = () => {
-    orbPulse.current = Animated.loop(
-      Animated.sequence([
-        Animated.timing(orbScale, { toValue: 1.08, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(orbScale, { toValue: 0.97, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    orbPulse.current.start();
-  };
-  const stopOrbPulse = () => {
-    orbPulse.current?.stop();
-    Animated.spring(orbScale, { toValue: 1, useNativeDriver: true }).start();
-  };
 
   // ── Halo ────────────────────────────────────────────────────────────────────
   const startHalo = () => {
@@ -188,29 +171,32 @@ export default function ListenScreen({ navigation }: any) {
 
   // ── Waveform ────────────────────────────────────────────────────────────────
   const startWaveAnimation = () => {
-    let phase = 0;
+    ampRef.current = 0.04;
     waveTimer.current = setInterval(() => {
-      phase += 0.18;
-      let normalized: number;
+      // Exponential smoothing — matches listen.html: ampCurrent += (target - ampCurrent) * 0.14
+      let ampTarget: number;
       if (meteringRef.current !== null) {
-        normalized = Math.max(0, Math.min(1, (meteringRef.current + 60) / 60));
+        ampTarget = Math.max(0, Math.min(1, (meteringRef.current + 60) / 60));
       } else {
-        const env = 0.35 + Math.sin(phase) * 0.22 + Math.cos(phase * 0.7) * 0.12;
-        normalized = Math.max(0.08, Math.min(0.92, env + (Math.random() - 0.5) * 0.18));
+        ampTarget = 0.3 + Math.random() * 0.4; // idle shimmer fallback
       }
+      ampRef.current += (ampTarget - ampRef.current) * 0.14;
+      const amp = ampRef.current;
+
       waves.forEach((wave, i) => {
-        const target = Math.max(0.07, normalized * BAR_MULTIPLIERS[i]);
-        Animated.timing(wave, { toValue: target, duration: 75, useNativeDriver: false }).start();
+        const target = Math.max(0.04, amp * DOME_MULTIPLIERS[i]);
+        Animated.timing(wave, { toValue: target, duration: 60, useNativeDriver: false }).start();
       });
-    }, 80);
+    }, 60);
   };
   const stopWaveAnimation = () => {
     if (waveTimer.current) { clearInterval(waveTimer.current); waveTimer.current = null; }
     meteringRef.current = null;
+    ampRef.current = 0.04;
   };
   const animateBarsToIdle = () => {
     waves.forEach((a) =>
-      Animated.timing(a, { toValue: 0.08, duration: 300, useNativeDriver: false }).start(),
+      Animated.timing(a, { toValue: 0.04, duration: 400, useNativeDriver: false }).start(),
     );
   };
 
@@ -220,12 +206,13 @@ export default function ListenScreen({ navigation }: any) {
       Animated.timing(spinAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
     );
     spinLoopRef.current.start();
+    // Gentle ripple through bars while processing
     waves.forEach((a, i) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 55),
-          Animated.timing(a, { toValue: 0.35, duration: 600, useNativeDriver: false }),
-          Animated.timing(a, { toValue: 0.08, duration: 600, useNativeDriver: false }),
+          Animated.delay(i * 40),
+          Animated.timing(a, { toValue: 0.28, duration: 500, useNativeDriver: false }),
+          Animated.timing(a, { toValue: 0.04, duration: 500, useNativeDriver: false }),
         ]),
       ).start(),
     );
@@ -242,19 +229,18 @@ export default function ListenScreen({ navigation }: any) {
     animateBarsToIdle();
   };
 
-  // ── Per-word scWord animation: translateY 7→0, opacity 0→1 ─────────────────
+  // ── Word animation ──────────────────────────────────────────────────────────
   const appendWords = useCallback((newWords: string[]) => {
     const animated: LiveWord[] = newWords.map((text) => ({
       text,
       anim:  new Animated.Value(0),
       animY: new Animated.Value(7),
     }));
-    // Kick off each word's entrance with a small stagger
     animated.forEach(({ anim, animY }, i) => {
-      const delay = i * 60;
+      const delay = i * 50;
       Animated.parallel([
-        Animated.timing(anim,  { toValue: 1, duration: 280, delay, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(animY, { toValue: 0, duration: 280, delay, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(anim,  { toValue: 1, duration: 260, delay, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(animY, { toValue: 0, duration: 260, delay, easing: Easing.out(Easing.ease), useNativeDriver: true }),
       ]).start();
     });
     const updated = [...liveWordsRef.current, ...animated];
@@ -262,29 +248,7 @@ export default function ListenScreen({ navigation }: any) {
     setLiveWords([...updated]);
   }, []);
 
-  // ── Chunk processing ────────────────────────────────────────────────────────
-  const processChunk = useCallback(async () => {
-    if (!isRecordingRef.current) return;
-    try {
-      await recorder.stop();
-      const uri = recorder.uri;
-      if (isRecordingRef.current) {
-        await recorder.prepareToRecordAsync();
-        recorder.record();
-      }
-      if (uri) {
-        const text = await PrayerAPI.listenChunk(uri);
-        if (text?.trim()) {
-          const words = text.trim().split(/\s+/).filter(Boolean);
-          accumulatedRef.current = [...accumulatedRef.current, ...words];
-          appendWords(words);
-        }
-      }
-    } catch {
-      // silent — keep going
-    }
-  }, [recorder, appendWords]);
-
+  // ── Recording (single continuous take — no chunking for accuracy) ────────────
   const startRecording = async () => {
     try {
       const { granted } = await requestRecordingPermissionsAsync();
@@ -292,17 +256,14 @@ export default function ListenScreen({ navigation }: any) {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
-      isRecordingRef.current  = true;
-      accumulatedRef.current  = [];
-      liveWordsRef.current    = [];
+      isRecordingRef.current = true;
+      liveWordsRef.current   = [];
       setResults([]);
       setLiveWords([]);
       setAppState("recording");
       startWaveAnimation();
       startHalo();
       startPingRings();
-      startOrbPulse();
-      chunkIntervalRef.current = setInterval(processChunk, CHUNK_MS);
     } catch {
       setErrorMsg("Failed to start recording. Please try again.");
       setAppState("error");
@@ -312,25 +273,23 @@ export default function ListenScreen({ navigation }: any) {
   const stopAndProcess = async () => {
     if (appState !== "recording") return;
     isRecordingRef.current = false;
-    if (chunkIntervalRef.current) { clearInterval(chunkIntervalRef.current); chunkIntervalRef.current = null; }
     stopWaveAnimation();
     stopHalo();
     stopPingRings();
-    stopOrbPulse();
     animateBarsToIdle();
     setAppState("processing");
     startProcessingAnim();
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      let finalText = "";
-      if (uri) finalText = await PrayerAPI.listenChunk(uri).catch(() => "");
-      const finalWords = finalText.trim().split(/\s+/).filter(Boolean);
-      if (finalWords.length) appendWords(finalWords);
+      if (!uri) throw new Error("No audio captured. Try again in a quieter space.");
 
-      const allWords  = [...accumulatedRef.current, ...finalWords];
-      const fullText  = allWords.join(" ");
-      if (!fullText.trim()) throw new Error("No audio captured. Try in a quieter environment.");
+      // Send full recording to Whisper — much more accurate than short chunks
+      const fullText = await PrayerAPI.listenChunk(uri);
+      if (!fullText?.trim()) throw new Error("No speech detected. Try speaking more clearly.");
+
+      const words = fullText.trim().split(/\s+/).filter(Boolean);
+      appendWords(words);
 
       const res     = await PrayerAPI.search({ query: fullText, limit: 5 });
       const matches = res.data.results || [];
@@ -357,29 +316,22 @@ export default function ListenScreen({ navigation }: any) {
     setResults([]);
     setLiveWords([]);
     liveWordsRef.current = [];
-    accumulatedRef.current = [];
     setErrorMsg("");
     animateBarsToIdle();
   };
 
-  const spin     = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-  const topResult = results[0];
-  const relName   = (item: any) => item.religions?.name ?? religionsMap[item.religion_id] ?? "";
+  const spin       = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const topResult  = results[0];
+  const relName    = (item: any) => item.religions?.name ?? religionsMap[item.religion_id] ?? "";
   const isCapturing = appState === "recording";
-  const haloOpacity = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] });
+  const haloOpacity = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] });
 
   const pingStyle = (anim: Animated.Value) => ({
-    opacity:   anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.5, 0.2, 0] }),
-    transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] }) }],
+    opacity:   anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.45, 0.15, 0] }),
+    transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.65] }) }],
   });
 
   const s = useMemo(() => makeStyles(C), [C]);
-
-  // Orb color: idle = accent, recording = ember tint of accent, processing = accent2
-  const orbColor =
-    appState === "recording"   ? C.accent
-    : appState === "processing" ? C.accent2
-    : C.accent;
 
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
@@ -391,7 +343,7 @@ export default function ListenScreen({ navigation }: any) {
           <ThemeToggle />
         </View>
 
-        {/* Live transcript — words flow in with scWord animation */}
+        {/* Live transcript area */}
         <View style={s.transcriptArea}>
           {appState === "idle" && (
             <>
@@ -408,7 +360,6 @@ export default function ListenScreen({ navigation }: any) {
             <Text style={[s.matchingHint, { color: C.accent }]}>{errorMsg}</Text>
           )}
 
-          {/* Animated word stream — shown during recording, processing, results */}
           {(appState === "recording" || appState === "processing" || appState === "results") && (
             <View style={s.wordStream}>
               {liveWords.length === 0 && appState === "recording" && (
@@ -430,15 +381,14 @@ export default function ListenScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Waveform stage — tap during recording to stop; orb hidden while capturing */}
-        <TouchableWithoutFeedback onPress={isCapturing ? stopAndProcess : undefined}>
+        {/* ── Waveform stage ────────────────────────────────────────────────── */}
         <View style={s.waveStage}>
-          {/* Layer 1: halo glow */}
+          {/* Halo glow */}
           <View style={s.stageLayer} pointerEvents="none">
-            <Animated.View style={[s.halo, { opacity: haloOpacity, backgroundColor: C.accent + "38" }]} />
+            <Animated.View style={[s.halo, { opacity: haloOpacity, backgroundColor: C.accent + "30" }]} />
           </View>
 
-          {/* Layer 2: ping rings — each in its own layer so both center independently */}
+          {/* Ping rings — only during recording */}
           {isCapturing && (
             <>
               <View style={s.stageLayer} pointerEvents="none">
@@ -450,68 +400,45 @@ export default function ListenScreen({ navigation }: any) {
             </>
           )}
 
-          {/* Layer 3: waveform bars — clipped to circle */}
+          {/* Full-width mirrored waveform (bars grow ± from centre line) */}
           <View style={s.stageLayer} pointerEvents="none">
-            <View style={[s.waveCircle, { borderColor: C.line + "66" }]}>
-              <View style={s.waveform}>
-                {waves.map((a, i) => (
-                  <Animated.View
-                    key={i}
-                    style={[
-                      s.bar,
-                      {
-                        height: a.interpolate({
-                          inputRange:  [0, 1],
-                          outputRange: [4, isCapturing ? 200 : 30],
-                        }),
-                        opacity: a.interpolate({ inputRange: [0.06, 1], outputRange: [0.18, 0.92] }),
-                        backgroundColor:
-                          appState === "recording"   ? BAR_GRADIENT[i]
-                          : appState === "processing" ? C.accent2
-                          : C.line,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
+            <View style={s.waveform}>
+              {waves.map((a, i) => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    s.bar,
+                    {
+                      height: a.interpolate({
+                        inputRange:  [0, 1],
+                        outputRange: [3, MAX_BAR * 2],
+                      }),
+                      opacity: a.interpolate({ inputRange: [0.03, 1], outputRange: [0.15, 0.9] }),
+                      backgroundColor:
+                        appState === "recording"   ? BAR_COLORS[i]
+                        : appState === "processing" ? C.accent2
+                        : C.line,
+                    },
+                  ]}
+                />
+              ))}
             </View>
           </View>
-
-          {/* Layer 4: ORB — hidden during recording; waveStage itself is the touch target then */}
-          {!isCapturing && (
-            <View style={s.stageLayer}>
-              <Animated.View style={{ transform: [{ scale: orbScale }] }}>
-                <TouchableOpacity
-                  style={[s.orb, { backgroundColor: orbColor }]}
-                  onPress={
-                    appState === "idle"   ? startRecording
-                    : appState === "error" ? reset
-                    : undefined
-                  }
-                  activeOpacity={0.88}
-                  disabled={appState === "processing"}
-                >
-                  {appState === "processing" ? (
-                    <Animated.Text style={[s.orbSpinner, { color: C.onacc, transform: [{ rotate: spin }] }]}>
-                      ↻
-                    </Animated.Text>
-                  ) : (
-                    <MicIcon color={C.onacc} size={26} />
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
-            </View>
-          )}
         </View>
-        </TouchableWithoutFeedback>
 
-        {/* Status label below orb */}
-        <View style={s.statusRow}>
+        {/* ── Controls below waveform ───────────────────────────────────────── */}
+        <View style={s.controlRow}>
+          {/* Idle: CTA pill button */}
           {appState === "idle" && (
-            <Text style={s.statusLabel}>Tap the orb to begin</Text>
+            <TouchableOpacity style={[s.ctaBtn, { backgroundColor: C.accent }]} onPress={startRecording} activeOpacity={0.88}>
+              <MicIcon color={C.onacc} size={18} />
+              <Text style={[s.ctaBtnTxt, { color: C.onacc }]}>Hold up to a prayer</Text>
+            </TouchableOpacity>
           )}
-          {appState === "recording" && (
-            <>
+
+          {/* Recording: Listening badge + Cancel */}
+          {isCapturing && (
+            <View style={s.listeningGroup}>
               <View style={s.listeningBadge}>
                 <View style={[s.listeningDot, { backgroundColor: C.accent }]} />
                 <Text style={[s.listeningTxt, { color: C.accent }]}>Listening</Text>
@@ -523,26 +450,30 @@ export default function ListenScreen({ navigation }: any) {
               >
                 <Text style={[s.cancelTxt, { color: C.text2 }]}>Cancel</Text>
               </TouchableOpacity>
-            </>
+            </View>
           )}
+
+          {/* Processing */}
           {appState === "processing" && (
             <View style={s.listeningBadge}>
               <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <Text style={[s.orbSpinnerSmall, { color: C.accent2 }]}>↻</Text>
+                <Text style={[s.spinnerGlyph, { color: C.accent2 }]}>↻</Text>
               </Animated.View>
               <Text style={[s.listeningTxt, { color: C.accent2 }]}>{matchingStep}</Text>
             </View>
           )}
+
+          {/* Error */}
           {appState === "error" && (
-            <TouchableOpacity onPress={reset}>
-              <Text style={[s.statusLabel, { color: C.accent }]}>Try again →</Text>
+            <TouchableOpacity onPress={reset} activeOpacity={0.75}>
+              <Text style={[s.hintTxt, { color: C.accent }]}>Try again →</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Results */}
+        {/* ── Results ───────────────────────────────────────────────────────── */}
         {appState === "results" && (
-          <View style={{ width: "100%", marginTop: 28 }}>
+          <View style={s.resultsWrap}>
             {topResult && (
               <View style={s.matchBadge}>
                 <Text style={[s.matchBadgeTxt, { color: C.accent3, backgroundColor: C.accent3 + "28" }]}>
@@ -567,9 +498,7 @@ export default function ListenScreen({ navigation }: any) {
                   <View style={[s.resultTopLine, { backgroundColor: i === 0 ? C.accent : C.line }]} />
                   <View style={s.resultMeta}>
                     <View style={[s.resultDot, { backgroundColor: color }]} />
-                    <Text style={[s.resultRel, { color }]}>
-                      {icon}  {name}
-                    </Text>
+                    <Text style={[s.resultRel, { color }]}>{icon}  {name}</Text>
                   </View>
                   <Text style={s.resultTitle}>{m.title}</Text>
                   <Text style={s.resultExcerpt} numberOfLines={2}>"{m.body}"</Text>
@@ -636,9 +565,8 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       color: C.accent2,
     },
 
-    // Word stream — words flow inline with animation
-    wordStream:   { flexDirection: "column", justifyContent: "flex-end" },
-    wordLine:     { flexDirection: "row", flexWrap: "wrap" },
+    wordStream:           { flexDirection: "column", justifyContent: "flex-end" },
+    wordLine:             { flexDirection: "row", flexWrap: "wrap" },
     word: {
       fontFamily: "Newsreader_400Regular",
       fontSize: 27,
@@ -653,75 +581,98 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       lineHeight: 36,
     },
 
-    // Waveform stage — fixed height, layers stacked via absoluteFillObject
+    // Waveform stage — layered, full screen width
     waveStage: {
-      height: 260,
-      marginVertical: 4,
+      height: WAVE_H + 40, // extra space for halo/ping rings
+      marginVertical: 8,
     },
-    // Each layer fills the stage and centers its single child
     stageLayer: {
       position: "absolute",
-      top: 0, left: 0, right: 0, bottom: 0,
+      top: 0, left: -22, right: -22, bottom: 0, // bleed past scroll padding
       alignItems: "center",
       justifyContent: "center",
     },
     halo: {
-      width: HALO_SIZE,
+      width:  HALO_SIZE,
       height: HALO_SIZE,
       borderRadius: HALO_SIZE / 2,
     },
     pingRing: {
-      width: PING_SIZE,
+      width:  PING_SIZE,
       height: PING_SIZE,
       borderRadius: PING_SIZE / 2,
       borderWidth: 1.5,
     },
-    waveCircle: {
-      width: WAVE_CIRCLE,
-      height: WAVE_CIRCLE,
-      borderRadius: WAVE_CIRCLE / 2,
-      overflow: "hidden",
-      borderWidth: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
+    // Full-width bar row — alignItems:'center' makes bars grow symmetrically up+down
     waveform: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 3,
-      height: WAVE_CIRCLE,
-      justifyContent: "center",
+      gap: BAR_GAP,
+      height: WAVE_H,
     },
-    bar: { width: 3.5, borderRadius: 2 },
+    bar: {
+      width: BAR_W,
+      borderRadius: BAR_W / 2,
+    },
 
-    // Orb — large circle, centered over waveform
-    orb: {
-      width: ORB_SIZE,
-      height: ORB_SIZE,
-      borderRadius: ORB_SIZE / 2,
+    // Controls row
+    controlRow: {
       alignItems: "center",
-      justifyContent: "center",
-      shadowColor: C.accent,
-      shadowOffset: { width: 0, height: 16 },
-      shadowOpacity: 0.55,
-      shadowRadius: 28,
-      elevation: 12,
+      marginTop: 12,
+      marginBottom: 4,
     },
-    stopIcon: { width: 28, height: 28, borderRadius: 5 },
-    orbSpinner:      { fontSize: 30 },
-    orbSpinnerSmall: { fontSize: 16 },
 
-    statusRow: { alignItems: "center", marginTop: 16 },
-    statusLabel: {
-      fontFamily: "HankenGrotesk_600SemiBold",
-      fontSize: 13,
-      color: C.text3,
-      letterSpacing: 0.3,
+    // Idle CTA pill
+    ctaBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 16,
+      paddingHorizontal: 28,
+      borderRadius: 999,
+      shadowColor: C.accent,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.45,
+      shadowRadius: 18,
+      elevation: 8,
     },
+    ctaBtnTxt: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 15,
+      letterSpacing: 0.2,
+    },
+
+    // Recording state
+    listeningGroup: { alignItems: "center", gap: 14 },
     listeningBadge: { flexDirection: "row", alignItems: "center", gap: 8 },
     listeningDot:   { width: 8, height: 8, borderRadius: 4 },
-    listeningTxt:   { fontFamily: "HankenGrotesk_700Bold", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" },
+    listeningTxt: {
+      fontFamily: "HankenGrotesk_700Bold",
+      fontSize: 12,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+    },
+    cancelBtn: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingVertical: 11,
+      paddingHorizontal: 36,
+    },
+    cancelTxt: {
+      fontFamily: "HankenGrotesk_500Medium",
+      fontSize: 15,
+      letterSpacing: 0.2,
+    },
 
+    spinnerGlyph: { fontSize: 16 },
+    hintTxt: {
+      fontFamily: "HankenGrotesk_600SemiBold",
+      fontSize: 13,
+      letterSpacing: 0.3,
+    },
+
+    // Results
+    resultsWrap: { width: "100%", marginTop: 20 },
     matchBadge:    { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 14 },
     matchBadgeTxt: {
       fontFamily: "HankenGrotesk_700Bold",
@@ -732,7 +683,6 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       paddingHorizontal: 12,
       borderRadius: 999,
     },
-
     resultCard: {
       borderRadius: 24,
       backgroundColor: C.surface,
@@ -751,19 +701,6 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     resultRel:     { fontFamily: "HankenGrotesk_700Bold", fontSize: 11, letterSpacing: 1, textTransform: "uppercase" },
     resultTitle:   { fontFamily: "InstrumentSerif_400Regular", fontSize: 30, lineHeight: 32, color: C.text, marginBottom: 9 },
     resultExcerpt: { fontFamily: "Newsreader_400Regular_Italic", fontSize: 18, lineHeight: 26, color: C.text2 },
-
-    cancelBtn: {
-      marginTop: 14,
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingVertical: 11,
-      paddingHorizontal: 36,
-    },
-    cancelTxt: {
-      fontFamily: "HankenGrotesk_500Medium",
-      fontSize: 15,
-      letterSpacing: 0.2,
-    },
 
     noMatch:  { fontFamily: "Newsreader_400Regular_Italic", fontSize: 17, color: C.text3, textAlign: "center", marginVertical: 20, lineHeight: 25 },
     againBtn: { alignSelf: "center", marginTop: 16 },

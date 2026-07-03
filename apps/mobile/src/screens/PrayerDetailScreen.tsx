@@ -222,8 +222,11 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
   const [userId, setUserId]     = useState<string | null>(null);
 
   useEffect(() => {
-    setSaved(isPrayerSaved(prayer.id));
-    getSession().then(({ data }) => setUserId(data.session?.user?.id ?? null));
+    getSession().then(({ data }) => {
+      const uid = data.session?.user?.id ?? null;
+      setUserId(uid);
+      if (uid) setSaved(isPrayerSaved(prayer.id, uid));
+    });
     PrayerAPI.getSimilar(prayer.id)
       .then((res) => {
         const raw: any[] = res.data.similar || [];
@@ -251,11 +254,11 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
     setSaved(next);
     try {
       if (next) {
-        saveToDevice(prayer);
+        saveToDevice(prayer, userId);
         await savePrayer(userId, prayer.id);
         trackSaved({ prayer_id: prayer.id, religion: relName });
       } else {
-        removeFromDevice(prayer.id);
+        removeFromDevice(prayer.id, userId);
         await unsavePrayer(userId, prayer.id);
       }
     } catch {

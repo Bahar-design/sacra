@@ -127,17 +127,34 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
+  // Magnifying glass: circle lens + angled handle, all in theme color
   return (
-    <Text
-      style={{
-        fontSize: 18,
-        color,
-        includeFontPadding: false,
-        textAlignVertical: "center",
-      }}
-    >
-      🔍︎
-    </Text>
+    <View style={{ width: 22, height: 22 }}>
+      <View
+        style={{
+          position: "absolute",
+          top: 1,
+          left: 1,
+          width: 13,
+          height: 13,
+          borderRadius: 6.5,
+          borderWidth: 2,
+          borderColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          right: 0,
+          width: 2,
+          height: 9,
+          backgroundColor: color,
+          borderRadius: 1,
+          transform: [{ rotate: "45deg" }],
+        }}
+      />
+    </View>
   );
 }
 

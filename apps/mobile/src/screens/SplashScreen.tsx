@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
-import { lightC, darkC } from "../theme";
+import { LinearGradient } from "expo-linear-gradient";
 
 const { width, height } = Dimensions.get("window");
 
@@ -8,55 +8,56 @@ interface Props {
   onFinish: () => void;
 }
 
-// Time-based theme: evening (18:00–05:59) → dark, otherwise → light
-const hour = new Date().getHours();
-const isEvening = hour >= 18 || hour < 6;
-const C = isEvening ? darkC : lightC;
+// Splash always uses the light-mode cream background (matches the HTML design)
+const BG       = "#FFFDF9";
+const TEXT_INK = "#211B30";
+const TEXT_DIM = "#8a7e6e";
+const ACCENT   = "#E2553D";
 
-// Stage background colors (approximate Claude Design's radial-gradient stage)
-const STAGE_BASE  = isEvening ? "#141021" : "#FBF7EF";
-const STAGE_TOP   = isEvening ? "#251c44" : "#FDEFE0";
+// Orb dimensions
+const ORB      = 130;
+const ORB_CX   = width / 2;
+const ORB_CY   = height / 2 - 95;
 
-// Orb container matches Claude Design: 230×200, centered, 26px gap above text
-const CONTAINER_W = 230;
-const CONTAINER_H = 200;
-const CTR_LEFT = (width - CONTAINER_W) / 2;
-const CTR_TOP  = height / 2 - 163;
-
-// Floating dots — exact positions from Claude Design
+// 5 floating dots — positioned relative to orb center (matches splash.html)
 const DOTS = [
-  { color: "#3E6FB0", size: 16, x: CTR_LEFT + 30,  y: CTR_TOP + 24  },
-  { color: "#E0A02E", size: 13, x: CTR_LEFT + 186, y: CTR_TOP + 40  },
-  { color: "#1E8A7F", size: 11, x: CTR_LEFT + 40,  y: CTR_TOP + 170 },
-  { color: "#8E5BA6", size: 15, x: CTR_LEFT + 179, y: CTR_TOP + 160 },
-  { color: "#C24D52", size: 9,  x: CTR_LEFT + 157, y: CTR_TOP + 8   },
+  { color: "#3E6FB0", size: 15, dx: -88, dy: -48 },
+  { color: "#E0A02E", size: 11, dx:  72, dy: -36 },
+  { color: "#1E8A7F", size:  9, dx: -80, dy:  60 },
+  { color: "#8E5BA6", size: 13, dx:  64, dy:  52 },
+  { color: "#C24D52", size:  8, dx:  40, dy: -58 },
 ];
 
-// Float animation patterns matching Claude Design scFloatA/B/C
 const FLOAT_PATTERNS = [
-  { tx: 10, ty: -14 },  // scFloatA
-  { tx: -12, ty: 10 },  // scFloatB
-  { tx: 8,  ty: 12  },  // scFloatC
-  { tx: 10, ty: -14 },  // scFloatA again
-  { tx: 8,  ty: 12  },  // scFloatC again
+  { tx: 10, ty: -14 },
+  { tx: -12, ty: 10 },
+  { tx: 8,   ty: 12 },
+  { tx: 10,  ty: -14 },
+  { tx: 8,   ty: 12 },
 ];
-
-const DOT_DURATIONS = [5000, 6000, 5500, 6500, 5000];
 
 export default function SplashScreen({ onFinish }: Props) {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
   const orbScale  = useRef(new Animated.Value(1)).current;
-  const orbDriftX = useRef(new Animated.Value(0)).current;
-  const orbDriftY = useRef(new Animated.Value(0)).current;
+  // Aurora: slides a 2×-wide gradient left so the hue drifts across the orb
+  const auroraX   = useRef(new Animated.Value(0)).current;
   const exitAnim  = useRef(new Animated.Value(1)).current;
-  const dotAnims  = useRef(DOTS.map(() => ({
-    x: new Animated.Value(0),
-    y: new Animated.Value(0),
-  }))).current;
+  const dotAnims  = useRef(
+    DOTS.map(() => ({ x: new Animated.Value(0), y: new Animated.Value(0) })),
+  ).current;
 
   useEffect(() => {
-    // Orb breathe — matches scBreathe 4s
+    // Aurora sweep: 0 → -ORB px (one full colour cycle), 3.8 s per loop
+    Animated.loop(
+      Animated.timing(auroraX, {
+        toValue: -ORB,
+        duration: 3800,
+        useNativeDriver: true,
+      }),
+    ).start();
+
+    // Breathe: scale 1 ↔ 1.06, 4 s total
     Animated.loop(
       Animated.sequence([
         Animated.timing(orbScale, { toValue: 1.06, duration: 2000, useNativeDriver: true }),
@@ -64,34 +65,16 @@ export default function SplashScreen({ onFinish }: Props) {
       ]),
     ).start();
 
-    // Orb slow drift — gentle float across 12–15px
-    Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(orbDriftX, { toValue: 14,  duration: 4200, useNativeDriver: true }),
-          Animated.timing(orbDriftY, { toValue: -10, duration: 4200, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(orbDriftX, { toValue: -11, duration: 4800, useNativeDriver: true }),
-          Animated.timing(orbDriftY, { toValue: 9,   duration: 4800, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(orbDriftX, { toValue: 0, duration: 4000, useNativeDriver: true }),
-          Animated.timing(orbDriftY, { toValue: 0, duration: 4000, useNativeDriver: true }),
-        ]),
-      ]),
-    ).start();
-
-    // Text entrance — fade + pop in
+    // Text fade + pop-in
     Animated.parallel([
       Animated.timing(fadeAnim,  { toValue: 1, duration: 900, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, tension: 18, friction: 7, useNativeDriver: true }),
     ]).start();
 
-    // Staggered dot floats — each dot has its own x+y target (matches scFloatA/B/C)
+    // Staggered dot floats
     dotAnims.forEach((anim, i) => {
       const { tx, ty } = FLOAT_PATTERNS[i];
-      const dur = DOT_DURATIONS[i];
+      const dur = 5000 + i * 500;
       Animated.loop(
         Animated.sequence([
           Animated.parallel([
@@ -106,7 +89,7 @@ export default function SplashScreen({ onFinish }: Props) {
       ).start();
     });
 
-    // Exit after 3s
+    // Exit after 3 s
     const t = setTimeout(() => {
       Animated.timing(exitAnim, { toValue: 0, duration: 600, useNativeDriver: true }).start(
         () => onFinish(),
@@ -118,11 +101,10 @@ export default function SplashScreen({ onFinish }: Props) {
 
   return (
     <Animated.View style={[s.container, { opacity: exitAnim }]}>
-      {/* Stage background — two-layer radial gradient approximation */}
-      <View style={[s.stageBase, { backgroundColor: STAGE_BASE }]} />
-      <View style={s.stageTop} pointerEvents="none" />
+      {/* Cream background */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: BG }]} />
 
-      {/* Floating colored dots */}
+      {/* 5 floating dots */}
       {DOTS.map((dot, i) => (
         <Animated.View
           key={i}
@@ -133,8 +115,8 @@ export default function SplashScreen({ onFinish }: Props) {
               height: dot.size,
               borderRadius: dot.size / 2,
               backgroundColor: dot.color,
-              left: dot.x,
-              top:  dot.y,
+              left: ORB_CX + dot.dx - dot.size / 2,
+              top:  ORB_CY + dot.dy - dot.size / 2,
               transform: [
                 { translateX: dotAnims[i].x },
                 { translateY: dotAnims[i].y },
@@ -144,30 +126,49 @@ export default function SplashScreen({ onFinish }: Props) {
         />
       ))}
 
-      {/* Soft orb — stacked concentric circles simulate radial-gradient blur */}
+      {/* Soft coral glow behind orb (approximates filter: blur glow) */}
+      <View
+        style={[
+          s.orbGlow,
+          {
+            left: ORB_CX - (ORB + 32) / 2,
+            top:  ORB_CY - (ORB + 32) / 2,
+          },
+        ]}
+      />
+
+      {/* Orb: breathing scale + aurora colour drift */}
       <Animated.View
         style={[
-          s.softOrbWrap,
+          s.orbWrap,
           {
-            transform: [{ scale: orbScale }, { translateX: orbDriftX }, { translateY: orbDriftY }],
+            left: ORB_CX - ORB / 2,
+            top:  ORB_CY - ORB / 2,
+            transform: [{ scale: orbScale }],
           },
         ]}
       >
-        <View style={[s.softRing, { width: 340, height: 340, borderRadius: 170, opacity: isEvening ? 0.07 : 0.09, backgroundColor: "#C490C8" }]} />
-        <View style={[s.softRing, { width: 280, height: 280, borderRadius: 140, opacity: isEvening ? 0.13 : 0.16, backgroundColor: "#9A70C4" }]} />
-        <View style={[s.softRing, { width: 225, height: 225, borderRadius: 113, opacity: isEvening ? 0.24 : 0.28, backgroundColor: "#7B52A8" }]} />
-        <View style={[s.softRing, { width: 172, height: 172, borderRadius: 86,  opacity: isEvening ? 0.40 : 0.46, backgroundColor: "#6848A0" }]} />
-        <View style={[s.softRing, { width: 120, height: 120, borderRadius: 60,  opacity: isEvening ? 0.58 : 0.65, backgroundColor: "#7060B8" }]} />
-        {/* Inner highlight spot — slightly offset up-left */}
-        <View style={[s.softRing, { width: 64, height: 64, borderRadius: 32, opacity: isEvening ? 0.50 : 0.55, backgroundColor: "#D4BEF0",
-          transform: [{ translateX: -14 }, { translateY: -16 }] }]} />
+        {/* Clip to circle */}
+        <View style={s.orbClip}>
+          {/* 2× wide gradient slides left for aurora hue-drift */}
+          <Animated.View
+            style={[s.auroraSlide, { transform: [{ translateX: auroraX }] }]}
+          >
+            <LinearGradient
+              colors={["#E2553D", "#5C4B96", "#1E8A7F", "#E2553D"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{ flex: 1 }}
+            />
+          </Animated.View>
+        </View>
       </Animated.View>
 
-      {/* Text block — entrance animation */}
+      {/* SACRA wordmark + tagline */}
       <Animated.View
         style={[
-          s.content,
-          { top: CTR_TOP + CONTAINER_H + 26 },
+          s.textBlock,
+          { top: ORB_CY + ORB / 2 + 36 },
           { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
         ]}
       >
@@ -175,7 +176,7 @@ export default function SplashScreen({ onFinish }: Props) {
         <Text style={s.tagline}>Find any prayer</Text>
       </Animated.View>
 
-      {/* Bottom subtitle */}
+      {/* Bottom tagline */}
       <Animated.Text style={[s.sub, { opacity: fadeAnim }]}>
         many voices · one light
       </Animated.Text>
@@ -190,43 +191,43 @@ const s = StyleSheet.create({
     height,
     zIndex: 999,
   },
-  stageBase: {
-    position: "absolute",
-    inset: 0,
-    top: 0, left: 0, right: 0, bottom: 0,
-  },
-  // Top radial bloom (lighter area at very top — approximates radial-gradient at 50% -8%)
-  stageTop: {
-    position: "absolute",
-    top: 0,
-    left: width * 0.1,
-    right: width * 0.1,
-    height: height * 0.45,
-    borderBottomLeftRadius: width * 0.6,
-    borderBottomRightRadius: width * 0.6,
-    backgroundColor: STAGE_TOP,
-    opacity: isEvening ? 0.55 : 0.45,
-  },
   dot: {
     position: "absolute",
-    opacity: 0.82,
+    opacity: 0.85,
   },
 
-  // Soft orb — centered at the orb position, large enough for outermost ring (340px)
-  softOrbWrap: {
+  // Soft coral bloom behind the orb
+  orbGlow: {
     position: "absolute",
-    width: 340,
-    height: 340,
-    left: width / 2 - 170,
-    top: CTR_TOP + CONTAINER_H / 2 - 170,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  softRing: {
-    position: "absolute",
+    width:  ORB + 32,
+    height: ORB + 32,
+    borderRadius: (ORB + 32) / 2,
+    backgroundColor: ACCENT,
+    opacity: 0.16,
   },
 
-  content: {
+  orbWrap: {
+    position: "absolute",
+    width:  ORB,
+    height: ORB,
+  },
+
+  // Hard-clip to circle so gradient doesn't overflow
+  orbClip: {
+    width:  ORB,
+    height: ORB,
+    borderRadius: ORB / 2,
+    overflow: "hidden",
+    opacity: 0.96,
+  },
+
+  // 2× width so the aurora sweep has room to slide
+  auroraSlide: {
+    width:  ORB * 2,
+    height: ORB,
+  },
+
+  textBlock: {
     position: "absolute",
     left: 0,
     right: 0,
@@ -236,7 +237,7 @@ const s = StyleSheet.create({
     fontFamily: "InstrumentSerif_400Regular",
     fontSize: 74,
     lineHeight: 74,
-    color: C.text,
+    color: TEXT_INK,
     letterSpacing: 1.5,
     includeFontPadding: false,
   },
@@ -245,7 +246,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 4.08,
     textTransform: "uppercase",
-    color: C.accent,
+    color: TEXT_DIM,
     marginTop: 14,
   },
 
@@ -255,7 +256,7 @@ const s = StyleSheet.create({
     alignSelf: "center",
     fontFamily: "Newsreader_400Regular_Italic",
     fontSize: 17,
-    color: C.text3,
+    color: TEXT_DIM,
     letterSpacing: 0.3,
   },
 });
