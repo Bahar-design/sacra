@@ -47,15 +47,11 @@ const AURORA_COLORS = [
 
 // ── Small icon helpers ────────────────────────────────────────────────────────
 
-function GlobeIcon({ color, size = 13 }: { color: string; size?: number }) {
+function GlobeIcon({ color }: { color: string }) {
   return (
-    <View style={{
-      width: size, height: size, borderRadius: size / 2,
-      borderWidth: 1.5, borderColor: color,
-      alignItems: "center", justifyContent: "center",
-    }}>
-      <View style={{ width: size - 4, height: 1.5, backgroundColor: color }} />
-    </View>
+    <Text style={{ fontSize: 13, color, lineHeight: 15, includeFontPadding: false }}>
+      ⟡
+    </Text>
   );
 }
 
@@ -324,7 +320,7 @@ export default function HomeScreen({ navigation }: any) {
                         activeOpacity={0.7}
                       >
                         <View style={s.langOptionLeft}>
-                          <View style={[s.langDot, { backgroundColor: sel ? C.accent : C.text3 }]} />
+                          <Text style={[s.langDot, { color: sel ? C.accent : C.text3 }]}>⟡</Text>
                           <Text style={[s.langOptionTxt, { color: sel ? C.accent : C.text }]}>
                             {lang.code}
                           </Text>
@@ -500,7 +496,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       borderRadius: 10,
     },
     langOptionLeft: { flexDirection: "row", alignItems: "center", gap: 9 },
-    langDot:        { width: 7, height: 7, borderRadius: 4 },
+    langDot:        { fontSize: 13, lineHeight: 16, includeFontPadding: false },
     langOptionTxt:  { fontFamily: "HankenGrotesk_600SemiBold", fontSize: 14 },
     langCheck:      { fontFamily: "HankenGrotesk_700Bold", fontSize: 14 },
 

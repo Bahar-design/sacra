@@ -7,12 +7,12 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // Prevents prompt injection via target_language and limits API surface.
 const ALLOWED_LANGUAGES = new Set([
   "English", "Spanish", "French", "German", "Italian", "Portuguese",
-  "Russian", "Arabic", "Hebrew", "Hindi", "Urdu", "Persian", "Turkish",
+  "Russian", "Arabic", "Hebrew", "Hindi", "Urdu", "Farsi", "Turkish",
   "Japanese", "Chinese", "Korean", "Bengali", "Indonesian", "Swahili", "Greek",
 ]);
 
-const MAX_TEXTS  = 200;  // max strings per batch
-const MAX_CHARS  = 8000; // max total characters across all texts
+const MAX_TEXTS  = 200;    // max strings per batch
+const MAX_CHARS  = 20000;  // max total characters (25 prayers × ~800 chars/prayer)
 
 export async function translateRoutes(fastify: FastifyInstance) {
   // POST /api/translate

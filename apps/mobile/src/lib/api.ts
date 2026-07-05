@@ -77,15 +77,22 @@ export const PrayerAPI = {
   },
 
   // Transcribe a short audio chunk — Whisper only, no embedding/search.
+  // Pass language (e.g. "arabic") after first chunk detection to stabilise subsequent chunks.
   // Returns the transcript text and the language Whisper detected.
-  listenChunk: async (audioUri: string): Promise<{ text: string; detectedLanguage: string | null }> => {
+  listenChunk: async (
+    audioUri: string,
+    language?: string,
+  ): Promise<{ text: string; detectedLanguage: string | null }> => {
     const formData = new FormData();
     formData.append("audio", {
       uri: audioUri,
       type: "audio/m4a",
       name: "chunk.m4a",
     } as any);
-    const res = await api.post("/api/listen/transcribe", formData, {
+    const url = language
+      ? `/api/listen/transcribe?language=${encodeURIComponent(language)}`
+      : "/api/listen/transcribe";
+    const res = await api.post(url, formData, {
       headers: { "Content-Type": "multipart/form-data" },
       timeout: 30000,
     });

@@ -21,7 +21,7 @@ export const APP_LANGUAGES = [
   { code: "Hebrew",     short: "HE" },
   { code: "Hindi",      short: "HI" },
   { code: "Urdu",       short: "UR" },
-  { code: "Persian",    short: "FA" },
+  { code: "Farsi",      short: "FA" },
   { code: "Turkish",    short: "TR" },
   { code: "Japanese",   short: "JA" },
   { code: "Chinese",    short: "ZH" },
@@ -74,9 +74,20 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         setIsTranslating(true);
         try {
           const texts = Array.from(uncached);
-          const res = await PrayerAPI.translate(texts, appLanguage);
-          res.translations.forEach((t: string, i: number) =>
-            langCache.set(texts[i], t),
+          // Split into parallel chunks of 25 so large prayer lists translate
+          // in concurrent batches instead of one slow serial request.
+          const CHUNK = 25;
+          const chunks: string[][] = [];
+          for (let i = 0; i < texts.length; i += CHUNK) {
+            chunks.push(texts.slice(i, i + CHUNK));
+          }
+          const results = await Promise.all(
+            chunks.map((chunk) => PrayerAPI.translate(chunk, appLanguage)),
+          );
+          results.forEach((res, ci) =>
+            res.translations.forEach((t: string, i: number) =>
+              langCache.set(chunks[ci][i], t),
+            ),
           );
         } catch {
           // Return originals if translation fails

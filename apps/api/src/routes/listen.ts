@@ -48,8 +48,10 @@ async function transcribeAndSearch(audioBuffer: Buffer, mimeType: string) {
 export async function listenRoutes(fastify: FastifyInstance) {
   // ─── POST /api/listen/transcribe ────────────────────────────────────
   // Transcribe-only endpoint for real-time chunked recording.
-  // Mobile sends a short audio file every ~6s while recording continues.
-  // Returns {text} — no embedding or search, just the transcript.
+  // Mobile sends audio every ~7s while recording continues.
+  // Optional query param: ?language=arabic  (ISO 639-1 or name)
+  //   Pass on subsequent chunks once the first chunk identifies the language.
+  // Returns { text, detectedLanguage }.
   fastify.post("/transcribe", async (req, rep) => {
     const data = await req.file();
     if (!data) return rep.status(400).send({ error: "No audio file provided" });
@@ -57,11 +59,18 @@ export async function listenRoutes(fastify: FastifyInstance) {
     for await (const chunk of data.file) chunks.push(chunk);
     const buf = Buffer.concat(chunks);
     if (buf.length === 0) return rep.status(400).send({ error: "Empty audio file" });
+
+    // Optional language hint from previous chunk detection
+    const langHint = ((req.query as any).language as string | undefined) || undefined;
+
     try {
       const transcription = (await openai.audio.transcriptions.create({
         file: await toFile(Readable.from(buf), "chunk.m4a", { type: data.mimetype }),
         model: "whisper-1",
         response_format: "verbose_json",
+        // Grounds Whisper in sacred-text vocabulary, reducing hallucination on short clips
+        prompt: "Sacred prayer, scripture, hymn, devotion, psalm, meditation.",
+        ...(langHint ? { language: langHint } : {}),
       })) as any;
       logWhisperCost(transcription.duration || 0).catch(console.error);
       return {

@@ -129,7 +129,7 @@ function ListenIcon({ color }: { color: string }) {
 function SearchIcon({ color }: { color: string }) {
   return (
     <View style={{ width: 22, height: 22 }}>
-      {/* Lens: 12×12 gives a cleaner proportion */}
+      {/* Lens circle */}
       <View
         style={{
           position: "absolute",
@@ -142,17 +142,18 @@ function SearchIcon({ color }: { color: string }) {
           borderColor: color,
         }}
       />
-      {/* Handle: 45° CW ("\" shape). Positioned so its rotated top end
-          sits just outside the lens border at the 4-o'clock position. */}
+      {/* Handle: 45° NW→SE. top:9, left:12 places the rotated top end
+          inside the border stroke at the 4-o'clock position of the lens,
+          ensuring a solid visual connection with no gap. */}
       <View
         style={{
           position: "absolute",
-          top: 10,
-          left: 13,
-          width: 2.5,
-          height: 8,
+          top: 9,
+          left: 12,
+          width: 3,
+          height: 9,
           backgroundColor: color,
-          borderRadius: 1.5,
+          borderRadius: 2,
           transform: [{ rotate: "45deg" }],
         }}
       />

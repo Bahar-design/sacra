@@ -26,8 +26,8 @@ import type { RecordingOptions } from "expo-audio";
 
 type State = "idle" | "recording" | "processing" | "results" | "error";
 
-// 42 bars matching the listen.html canvas design
-const BARS    = 42;
+// 48 bars — extra width on both ends vs original 42
+const BARS    = 48;
 const BAR_W   = 4;
 const BAR_GAP = 2;
 const WAVE_H  = 140; // total height of waveform area (bars grow ±70px from center)
@@ -97,6 +97,8 @@ export default function ListenScreen({ navigation }: any) {
   const [religionsMap, setReligionsMap] = useState<Record<string, string>>({});
   // Language Whisper detected in the last chunk (null = English / unknown)
   const [detectedLang, setDetectedLang] = useState<string | null>(null);
+  // Ref version so scheduleNextChunk closures always read the latest value
+  const detectedLangRef = useRef<string | null>(null);
 
   const isRecordingRef = useRef(false);
   const liveWordsRef   = useRef<LiveWord[]>([]);
@@ -298,9 +300,10 @@ export default function ListenScreen({ navigation }: any) {
         scheduleNextChunk();
       }
       if (uri) {
-        PrayerAPI.listenChunk(uri)
+        PrayerAPI.listenChunk(uri, detectedLangRef.current ?? undefined)
           .then(({ text, detectedLanguage }) => {
             if (detectedLanguage && detectedLanguage !== "english") {
+              detectedLangRef.current = detectedLanguage;
               setDetectedLang(detectedLanguage);
             }
             if (text?.trim()) {
@@ -313,7 +316,7 @@ export default function ListenScreen({ navigation }: any) {
           })
           .catch(() => {});
       }
-    }, 3500);
+    }, 7000);
   };
 
   // ── Recording ────────────────────────────────────────────────────────────────
@@ -362,8 +365,8 @@ export default function ListenScreen({ navigation }: any) {
       // Transcribe the current (final) in-progress chunk
       if (uri) {
         try {
-          const { text: finalText, detectedLanguage: finalLang } = await PrayerAPI.listenChunk(uri);
-          if (finalLang && finalLang !== "english") setDetectedLang(finalLang);
+          const { text: finalText, detectedLanguage: finalLang } = await PrayerAPI.listenChunk(uri, detectedLangRef.current ?? undefined);
+          if (finalLang && finalLang !== "english") { detectedLangRef.current = finalLang; setDetectedLang(finalLang); }
           if (finalText?.trim()) {
             accumulatedTextRef.current +=
               (accumulatedTextRef.current ? " " : "") + finalText.trim();
@@ -403,6 +406,7 @@ export default function ListenScreen({ navigation }: any) {
       chunkTimerRef.current = null;
     }
     accumulatedTextRef.current = '';
+    detectedLangRef.current = null;
     setDetectedLang(null);
     setAppState("idle");
     rawResultsRef.current = [];
