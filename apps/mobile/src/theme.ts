@@ -60,7 +60,7 @@ export const RELIGION_ICONS: Record<string, string> = {
   Islam: "☪",
   Judaism: "✡",
   Hinduism: "ॐ", // U+0950 Devanagari Om — plain text, no emoji presentation
-  Buddhism: "☸︎",
+  Buddhism: "⎈",
   Sikhism: "☬",
   Bahai: "✷",
   Zoroastrianism: "𓄂",
