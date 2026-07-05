@@ -64,7 +64,10 @@ export async function listenRoutes(fastify: FastifyInstance) {
         response_format: "verbose_json",
       })) as any;
       logWhisperCost(transcription.duration || 0).catch(console.error);
-      return { text: transcription.text?.trim() || "" };
+      return {
+        text: transcription.text?.trim() || "",
+        detectedLanguage: (transcription.language as string | undefined) ?? null,
+      };
     } catch (err: any) {
       return rep.status(422).send({ error: err.message });
     }

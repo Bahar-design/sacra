@@ -49,6 +49,13 @@ export const PrayerAPI = {
   getCosts: () => api.get("/api/dashboard/costs"),
   getStats: () => api.get("/api/dashboard/stats"),
 
+  // Batch-translate texts to target_language via GPT-4o-mini.
+  // Returns originals if target_language is "English" or the call fails.
+  translate: async (texts: string[], target_language: string): Promise<{ translations: string[] }> => {
+    const res = await api.post("/api/translate", { texts, target_language }, { timeout: 30000 });
+    return res.data as { translations: string[] };
+  },
+
   submitCommunity: (data: {
     title: string;
     body: string;
@@ -69,8 +76,9 @@ export const PrayerAPI = {
     });
   },
 
-  // Transcribe a short audio chunk — Whisper only, no embedding/search
-  listenChunk: async (audioUri: string): Promise<string> => {
+  // Transcribe a short audio chunk — Whisper only, no embedding/search.
+  // Returns the transcript text and the language Whisper detected.
+  listenChunk: async (audioUri: string): Promise<{ text: string; detectedLanguage: string | null }> => {
     const formData = new FormData();
     formData.append("audio", {
       uri: audioUri,
@@ -81,6 +89,9 @@ export const PrayerAPI = {
       headers: { "Content-Type": "multipart/form-data" },
       timeout: 30000,
     });
-    return res.data.text as string;
+    return {
+      text: res.data.text as string,
+      detectedLanguage: (res.data.detectedLanguage as string | null) ?? null,
+    };
   },
 };

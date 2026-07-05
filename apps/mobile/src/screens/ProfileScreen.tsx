@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useTheme } from "../lib/ThemeContext";
+import { useLanguage } from "../lib/LanguageContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import ThemeToggle from "../components/ThemeToggle";
 import { supabase, getSaved } from "../lib/supabase";
@@ -17,7 +18,9 @@ import { getAllOfflinePrayers, removeFromDevice, saveToDevice, isPrayerSaved } f
 
 export default function ProfileScreen({ navigation }: any) {
   const { C } = useTheme();
+  const { appLanguage, translatePrayers } = useLanguage();
   const [saved, setSaved] = useState<any[]>([]);
+  const [displaySaved, setDisplaySaved] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -64,6 +67,13 @@ export default function ProfileScreen({ navigation }: any) {
     }, []),
   );
 
+  // Retranslate saved prayers when language or saved list changes
+  useEffect(() => {
+    if (!saved.length) { setDisplaySaved([]); return; }
+    if (appLanguage === "English") { setDisplaySaved(saved); return; }
+    translatePrayers(saved).then(setDisplaySaved).catch(() => setDisplaySaved(saved));
+  }, [saved, appLanguage, translatePrayers]);
+
   const handleSignOut = () => {
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
@@ -91,11 +101,12 @@ export default function ProfileScreen({ navigation }: any) {
     const name = item.religion ?? item.religions?.name ?? "";
     const color = getReligionColor(name);
     const icon = getReligionIcon(name);
+    const orig = saved.find((p) => p.id === item.id) ?? item;
     return (
       <TouchableOpacity
         style={s.savedCard}
         activeOpacity={0.75}
-        onPress={() => navigation.navigate("PrayerDetail", { prayer: item })}
+        onPress={() => navigation.navigate("PrayerDetail", { prayer: orig })}
       >
         <View style={[s.savedBar, { backgroundColor: color }]} />
         <View style={s.savedBody}>
@@ -127,7 +138,7 @@ export default function ProfileScreen({ navigation }: any) {
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
       <FlatList
-        data={saved}
+        data={displaySaved}
         keyExtractor={(i) => i.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 110 }}

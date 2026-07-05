@@ -8,24 +8,29 @@ interface Props {
   onFinish: () => void;
 }
 
-// Splash always uses the light-mode cream background (matches the HTML design)
-const BG       = "#FFFDF9";
-const TEXT_INK = "#211B30";
-const TEXT_DIM = "#8a7e6e";
-const ACCENT   = "#E2553D";
+// Light-mode palette (day, 07:00–19:00)
+const BG_L       = "#FFFDF9";
+const TEXT_INK_L = "#211B30";
+const TEXT_DIM_L = "#A79FB0";
+const ACCENT_L   = "#E2553D";
+// Dark-mode palette (night, 19:00–07:00)
+const BG_D       = "#141021";
+const TEXT_INK_D = "#F4EFE6";
+const TEXT_DIM_D = "#6E6784";
+const ACCENT_D   = "#FF6E54";
 
-// Orb dimensions
-const ORB      = 130;
-const ORB_CX   = width / 2;
-const ORB_CY   = height / 2 - 95;
+// Orb — nudged toward bottom-left so it doesn't sit dead-centre
+const ORB    = 130;
+const ORB_CX = width  / 2 - 40;
+const ORB_CY = height / 2 - 35;
 
-// 5 floating dots — positioned relative to orb center (matches splash.html)
+// 5 floating dots — spread wide to fill more of the screen
 const DOTS = [
-  { color: "#3E6FB0", size: 15, dx: -88, dy: -48 },
-  { color: "#E0A02E", size: 11, dx:  72, dy: -36 },
-  { color: "#1E8A7F", size:  9, dx: -80, dy:  60 },
-  { color: "#8E5BA6", size: 13, dx:  64, dy:  52 },
-  { color: "#C24D52", size:  8, dx:  40, dy: -58 },
+  { color: "#3E6FB0", size: 15, dx: -145, dy:  -90 },
+  { color: "#E0A02E", size: 11, dx:  120, dy:  -75 },
+  { color: "#1E8A7F", size:  9, dx: -125, dy:  115 },
+  { color: "#8E5BA6", size: 13, dx:  105, dy:   98 },
+  { color: "#C24D52", size:  8, dx:   60, dy: -115 },
 ];
 
 const FLOAT_PATTERNS = [
@@ -37,6 +42,14 @@ const FLOAT_PATTERNS = [
 ];
 
 export default function SplashScreen({ onFinish }: Props) {
+  // Day 07:00–19:00 → light; night → dark
+  const hour     = new Date().getHours();
+  const isDark   = hour < 7 || hour >= 19;
+  const BG       = isDark ? BG_D       : BG_L;
+  const TEXT_INK = isDark ? TEXT_INK_D : TEXT_INK_L;
+  const TEXT_DIM = isDark ? TEXT_DIM_D : TEXT_DIM_L;
+  const ACCENT   = isDark ? ACCENT_D   : ACCENT_L;
+
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
   const orbScale  = useRef(new Animated.Value(1)).current;
@@ -101,7 +114,7 @@ export default function SplashScreen({ onFinish }: Props) {
 
   return (
     <Animated.View style={[s.container, { opacity: exitAnim }]}>
-      {/* Cream background */}
+      {/* Full-bleed background — colour set by time-of-day theme */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: BG }]} />
 
       {/* 5 floating dots */}
@@ -126,13 +139,14 @@ export default function SplashScreen({ onFinish }: Props) {
         />
       ))}
 
-      {/* Soft coral glow behind orb (approximates filter: blur glow) */}
+      {/* Soft coral glow behind orb */}
       <View
         style={[
           s.orbGlow,
           {
             left: ORB_CX - (ORB + 32) / 2,
             top:  ORB_CY - (ORB + 32) / 2,
+            backgroundColor: ACCENT,
           },
         ]}
       />
@@ -172,12 +186,12 @@ export default function SplashScreen({ onFinish }: Props) {
           { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
         ]}
       >
-        <Text style={s.title}>SACRA</Text>
-        <Text style={s.tagline}>Find any prayer</Text>
+        <Text style={[s.title,   { color: TEXT_INK }]}>SACRA</Text>
+        <Text style={[s.tagline, { color: ACCENT }]}>Find any prayer</Text>
       </Animated.View>
 
       {/* Bottom tagline */}
-      <Animated.Text style={[s.sub, { opacity: fadeAnim }]}>
+      <Animated.Text style={[s.sub, { opacity: fadeAnim, color: TEXT_DIM }]}>
         many voices · one light
       </Animated.Text>
     </Animated.View>
@@ -196,13 +210,13 @@ const s = StyleSheet.create({
     opacity: 0.85,
   },
 
-  // Soft coral bloom behind the orb
+  // Soft coral bloom behind the orb — colour overridden inline at runtime
   orbGlow: {
     position: "absolute",
     width:  ORB + 32,
     height: ORB + 32,
     borderRadius: (ORB + 32) / 2,
-    backgroundColor: ACCENT,
+    backgroundColor: ACCENT_L,
     opacity: 0.16,
   },
 
@@ -237,7 +251,7 @@ const s = StyleSheet.create({
     fontFamily: "InstrumentSerif_400Regular",
     fontSize: 74,
     lineHeight: 74,
-    color: TEXT_INK,
+    color: TEXT_INK_L,
     letterSpacing: 1.5,
     includeFontPadding: false,
   },
@@ -246,7 +260,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 4.08,
     textTransform: "uppercase",
-    color: ACCENT,
+    color: ACCENT_L,
     marginTop: 14,
   },
 
@@ -256,7 +270,7 @@ const s = StyleSheet.create({
     alignSelf: "center",
     fontFamily: "Newsreader_400Regular_Italic",
     fontSize: 17,
-    color: TEXT_DIM,
+    color: TEXT_DIM_L,
     letterSpacing: 0.3,
   },
 });

@@ -17,6 +17,7 @@ import {
 } from "expo-audio";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
+import { useLanguage } from "../lib/LanguageContext";
 import { getReligionColor, getReligionIcon } from "../theme";
 import { PrayerAPI, getReligionsMap } from "../lib/api";
 import { trackListen } from "../lib/analytics";
@@ -86,12 +87,16 @@ type LiveWord = { text: string; anim: Animated.Value; animY: Animated.Value };
 
 export default function ListenScreen({ navigation }: any) {
   const { C } = useTheme();
+  const { appLanguage, translatePrayers } = useLanguage();
   const [appState, setAppState]     = useState<State>("idle");
-  const [results, setResults]       = useState<any[]>([]);
+  const rawResultsRef               = useRef<any[]>([]);
+  const [displayResults, setDisplayResults] = useState<any[]>([]);
   const [liveWords, setLiveWords]   = useState<LiveWord[]>([]);
   const [errorMsg, setErrorMsg]     = useState("");
   const [matchingStep, setMatchingStep] = useState(MATCHING_STEPS[0]);
   const [religionsMap, setReligionsMap] = useState<Record<string, string>>({});
+  // Language Whisper detected in the last chunk (null = English / unknown)
+  const [detectedLang, setDetectedLang] = useState<string | null>(null);
 
   const isRecordingRef = useRef(false);
   const liveWordsRef   = useRef<LiveWord[]>([]);
@@ -99,6 +104,13 @@ export default function ListenScreen({ navigation }: any) {
   useEffect(() => {
     getReligionsMap().then(setReligionsMap).catch(console.error);
   }, []);
+
+  // Retranslate matched results when language changes
+  useEffect(() => {
+    if (!rawResultsRef.current.length) return;
+    if (appLanguage === "English") { setDisplayResults(rawResultsRef.current); return; }
+    translatePrayers(rawResultsRef.current).then(setDisplayResults).catch(() => {});
+  }, [appLanguage, translatePrayers]);
 
   const recorder      = useAudioRecorder(
     {
@@ -287,7 +299,10 @@ export default function ListenScreen({ navigation }: any) {
       }
       if (uri) {
         PrayerAPI.listenChunk(uri)
-          .then(text => {
+          .then(({ text, detectedLanguage }) => {
+            if (detectedLanguage && detectedLanguage !== "english") {
+              setDetectedLang(detectedLanguage);
+            }
             if (text?.trim()) {
               accumulatedTextRef.current +=
                 (accumulatedTextRef.current ? " " : "") + text.trim();
@@ -312,7 +327,8 @@ export default function ListenScreen({ navigation }: any) {
       isRecordingRef.current     = true;
       accumulatedTextRef.current = '';
       liveWordsRef.current       = [];
-      setResults([]);
+      rawResultsRef.current = [];
+      setDisplayResults([]);
       setLiveWords([]);
       setAppState("recording");
       startWaveAnimation();
@@ -346,7 +362,8 @@ export default function ListenScreen({ navigation }: any) {
       // Transcribe the current (final) in-progress chunk
       if (uri) {
         try {
-          const finalText = await PrayerAPI.listenChunk(uri);
+          const { text: finalText, detectedLanguage: finalLang } = await PrayerAPI.listenChunk(uri);
+          if (finalLang && finalLang !== "english") setDetectedLang(finalLang);
           if (finalText?.trim()) {
             accumulatedTextRef.current +=
               (accumulatedTextRef.current ? " " : "") + finalText.trim();
@@ -360,7 +377,9 @@ export default function ListenScreen({ navigation }: any) {
 
       const res     = await PrayerAPI.search({ query: searchText, limit: 5 });
       const matches = res.data.results || [];
-      setResults(matches);
+      rawResultsRef.current = matches;
+      const display = appLanguage !== "English" ? await translatePrayers(matches) : matches;
+      setDisplayResults(display);
       stopProcessingAnim();
       setAppState("results");
       trackListen({ matched: matches.length > 0, similarity: matches[0]?.similarity });
@@ -384,8 +403,10 @@ export default function ListenScreen({ navigation }: any) {
       chunkTimerRef.current = null;
     }
     accumulatedTextRef.current = '';
+    setDetectedLang(null);
     setAppState("idle");
-    setResults([]);
+    rawResultsRef.current = [];
+    setDisplayResults([]);
     setLiveWords([]);
     liveWordsRef.current = [];
     setErrorMsg("");
@@ -393,7 +414,7 @@ export default function ListenScreen({ navigation }: any) {
   };
 
   const spin       = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-  const topResult  = results[0];
+  const topResult  = displayResults[0];
   const relName    = (item: any) => item.religions?.name ?? religionsMap[item.religion_id] ?? "";
   const isCapturing = appState === "recording";
   const haloOpacity = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] });
@@ -436,6 +457,14 @@ export default function ListenScreen({ navigation }: any) {
             <View style={s.wordStream}>
               {liveWords.length === 0 && appState === "recording" && (
                 <Text style={s.listeningPlaceholder}>Listening…</Text>
+              )}
+              {/* Language detection badge — appears as soon as Whisper identifies a non-English language */}
+              {detectedLang && detectedLang !== "english" && (
+                <View style={s.langBadge}>
+                  <Text style={[s.langBadgeTxt, { color: C.accent2 }]}>
+                    {detectedLang.charAt(0).toUpperCase() + detectedLang.slice(1)} detected
+                  </Text>
+                </View>
               )}
               <View style={s.wordLine}>
                 {liveWords.map(({ text, anim, animY }, i) => (
@@ -485,11 +514,9 @@ export default function ListenScreen({ navigation }: any) {
                         inputRange:  [0, 1],
                         outputRange: [3, MAX_BAR * 2],
                       }),
-                      opacity: a.interpolate({ inputRange: [0.03, 1], outputRange: [0.15, 0.9] }),
-                      backgroundColor:
-                        appState === "recording"   ? BAR_COLORS[i]
-                        : appState === "processing" ? C.accent2
-                        : C.line,
+                      // Colour is always coral→violet→jade; opacity carries the amplitude
+                      opacity: a.interpolate({ inputRange: [0.03, 1], outputRange: [0.35, 0.92] }),
+                      backgroundColor: BAR_COLORS[i],
                     },
                   ]}
                 />
@@ -554,17 +581,18 @@ export default function ListenScreen({ navigation }: any) {
               </View>
             )}
 
-            {results.map((m, i) => {
+            {displayResults.map((m: any, i: number) => {
               const name  = relName(m);
               const color = getReligionColor(name);
               const icon  = getReligionIcon(name);
+              const orig  = rawResultsRef.current.find((p) => p.id === m.id) ?? m;
               return (
                 <TouchableOpacity
                   key={m.id}
                   style={s.resultCard}
                   activeOpacity={0.8}
                   onPress={() =>
-                    navigation.navigate("PrayerDetail", { prayer: { ...m, religions: { name } } })
+                    navigation.navigate("PrayerDetail", { prayer: { ...orig, religions: { name } } })
                   }
                 >
                   <View style={[s.resultTopLine, { backgroundColor: i === 0 ? C.accent : C.line }]} />
@@ -578,7 +606,7 @@ export default function ListenScreen({ navigation }: any) {
               );
             })}
 
-            {results.length === 0 && (
+            {displayResults.length === 0 && (
               <Text style={s.noMatch}>
                 No prayers matched. Try recording longer or in a quieter space.
               </Text>
@@ -638,6 +666,8 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
     },
 
     wordStream:           { flexDirection: "column", justifyContent: "flex-end" },
+    langBadge:            { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+    langBadgeTxt:         { fontFamily: "HankenGrotesk_700Bold", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" },
     wordLine:             { flexDirection: "row", flexWrap: "wrap" },
     word: {
       fontFamily: "Newsreader_400Regular",

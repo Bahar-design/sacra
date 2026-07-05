@@ -32,6 +32,7 @@ import {
 import { initOfflineDB } from "./src/lib/offlineStorage";
 import { supabase } from "./src/lib/supabase";
 import { ThemeProvider, useTheme } from "./src/lib/ThemeContext";
+import { LanguageProvider } from "./src/lib/LanguageContext";
 import HomeScreen from "./src/screens/HomeScreen";
 import ListenScreen from "./src/screens/ListenScreen";
 import SearchScreen from "./src/screens/SearchScreen";
@@ -126,27 +127,28 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
-  // Circle lens at top-left; handle rotated 45° so its top end lands at the
-  // circle's bottom-right edge — giving a connected magnifying-glass silhouette.
   return (
     <View style={{ width: 22, height: 22 }}>
+      {/* Lens: 12×12 gives a cleaner proportion */}
       <View
         style={{
           position: "absolute",
           top: 1,
           left: 1,
-          width: 13,
-          height: 13,
-          borderRadius: 6.5,
+          width: 12,
+          height: 12,
+          borderRadius: 6,
           borderWidth: 2,
           borderColor: color,
         }}
       />
+      {/* Handle: 45° CW ("\" shape). Positioned so its rotated top end
+          sits just outside the lens border at the 4-o'clock position. */}
       <View
         style={{
           position: "absolute",
           top: 10,
-          left: 14,
+          left: 13,
           width: 2.5,
           height: 8,
           backgroundColor: color,
@@ -325,9 +327,11 @@ function AppContent(): React.ReactElement {
 
   // Block rendering until fonts are ready so the splash always shows the correct
   // Instrument Serif / Hanken Grotesk typefaces (not the system fallback).
-  // The cream background matches the splash BG so there's no colour flash.
+  // Match the splash BG (day/night) so there is no colour flash.
   if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: "#FFFDF9" }} />;
+    const h = new Date().getHours();
+    const bg = h >= 7 && h < 19 ? "#FFFDF9" : "#141021";
+    return <View style={{ flex: 1, backgroundColor: bg }} />;
   }
 
   return (
@@ -357,7 +361,9 @@ export default function App(): React.ReactElement {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AppContent />
+          <LanguageProvider>
+            <AppContent />
+          </LanguageProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

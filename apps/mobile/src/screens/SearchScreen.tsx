@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
+import { useLanguage } from "../lib/LanguageContext";
 import { getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI, getReligionsMap } from "../lib/api";
 import { trackSearch } from "../lib/analytics";
@@ -30,8 +31,11 @@ const OCCASIONS = ["Daily", "Sabbath", "Fasting", "Funeral", "Wedding", "Birth",
 
 export default function SearchScreen({ navigation }: any) {
   const { C } = useTheme();
+  const { appLanguage, translatePrayers } = useLanguage();
+
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const rawResultsRef = useRef<any[]>([]);
+  const [displayResults, setDisplayResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [mood, setMood] = useState("");
@@ -42,14 +46,24 @@ export default function SearchScreen({ navigation }: any) {
     getReligionsMap().then(setReligionsMap).catch(console.error);
   }, []);
 
+  // Retranslate existing results when language changes
+  useEffect(() => {
+    if (!rawResultsRef.current.length) return;
+    if (appLanguage === "English") { setDisplayResults(rawResultsRef.current); return; }
+    translatePrayers(rawResultsRef.current).then(setDisplayResults).catch(() => {});
+  }, [appLanguage, translatePrayers]);
+
   const doSearch = async (q = query) => {
     if (!q.trim() && !mood && !occasion) return;
     setLoading(true);
     setHasSearched(true);
     try {
       const res = await PrayerAPI.search({ query: q, mood: mood || undefined, occasion: occasion || undefined, limit: 20 });
-      setResults(res.data.results || []);
-      trackSearch({ query: q, mood, occasion, resultCount: (res.data.results || []).length });
+      const raw: any[] = res.data.results || [];
+      rawResultsRef.current = raw;
+      const display = appLanguage !== "English" ? await translatePrayers(raw) : raw;
+      setDisplayResults(display);
+      trackSearch({ query: q, mood, occasion, resultCount: raw.length });
     } catch (e) {
       console.error(e);
     } finally {
@@ -66,17 +80,19 @@ export default function SearchScreen({ navigation }: any) {
     item.religions?.name ?? religionsMap[item.religion_id] ?? "";
 
   const renderResult = ({ item }: { item: any }) => {
-    const name = relName(item);
+    const name  = relName(item);
     const color = getReligionColor(name);
     const tint  = getReligionTint(name);
     const icon  = getReligionIcon(name);
+    // Navigate with original English data so PrayerDetailScreen translates fresh
+    const orig  = rawResultsRef.current.find((p) => p.id === item.id) ?? item;
     return (
       <TouchableOpacity
         style={s.card}
         activeOpacity={0.75}
         onPress={() =>
           navigation.navigate("PrayerDetail", {
-            prayer: { ...item, religions: { name } },
+            prayer: { ...orig, religions: { name } },
           })
         }
       >
@@ -99,7 +115,7 @@ export default function SearchScreen({ navigation }: any) {
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
       <FlatList
-        data={results}
+        data={displayResults}
         keyExtractor={(i) => i.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 110 }}
@@ -124,7 +140,7 @@ export default function SearchScreen({ navigation }: any) {
                 selectionColor={C.accent}
               />
               {query.length > 0 && (
-                <TouchableOpacity onPress={() => { setQuery(""); setResults([]); setHasSearched(false); }}>
+                <TouchableOpacity onPress={() => { setQuery(""); rawResultsRef.current = []; setDisplayResults([]); setHasSearched(false); }}>
                   <Text style={s.clearBtn}>✕</Text>
                 </TouchableOpacity>
               )}
@@ -188,8 +204,8 @@ export default function SearchScreen({ navigation }: any) {
             )}
 
             {loading && <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} />}
-            {hasSearched && !loading && results.length > 0 && (
-              <Text style={s.sectionLabel}>{results.length} prayers found</Text>
+            {hasSearched && !loading && displayResults.length > 0 && (
+              <Text style={s.sectionLabel}>{displayResults.length} prayers found</Text>
             )}
           </>
         }

@@ -59,12 +59,12 @@ export const RELIGION_ICONS: Record<string, string> = {
   Christianity: "✝",
   Islam: "☪",
   Judaism: "✡",
-  Hinduism: "ॐ",              // U+0950 Devanagari Om — plain text, no emoji presentation
-  Buddhism: "✸",              // U+2738 (Dingbats) — 8-pointed star, dharma wheel; never emoji
+  Hinduism: "ॐ", // U+0950 Devanagari Om — plain text, no emoji presentation
+  Buddhism: "☸︎",
   Sikhism: "☬",
   Bahai: "✷",
   Zoroastrianism: "𓄂",
-  Jainism: "⊙",               // U+2299 Circled Dot — Jain concept of jiva (soul) at center of cosmos
+  Jainism: "⊙", // U+2299 Circled Dot — Jain concept of jiva (soul) at center of cosmos
   Taoism: "☯",
   Shinto: "⛩",
   "Indigenous / Animist": "𖦏",

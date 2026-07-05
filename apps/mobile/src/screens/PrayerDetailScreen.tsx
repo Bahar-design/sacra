@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../lib/ThemeContext";
+import { useLanguage } from "../lib/LanguageContext";
 import { getReligionColor, getReligionIcon, getReligionTint } from "../theme";
 import { PrayerAPI } from "../lib/api";
 import { savePrayer, unsavePrayer, getSession } from "../lib/supabase";
@@ -215,12 +216,24 @@ function ConstellationDiagram({
 
 export default function PrayerDetailScreen({ route, navigation }: any) {
   const { C } = useTheme();
+  const { appLanguage, translatePrayers } = useLanguage();
   const { prayer } = route.params;
-  const [similar, setSimilar]   = useState<any[]>([]);
-  const [loadSim, setLoadSim]   = useState(true);
-  const [saved, setSaved]       = useState(false);
-  const [userId, setUserId]     = useState<string | null>(null);
 
+  // Display state — translated when appLanguage !== "English"
+  const [displayPrayer, setDisplayPrayer] = useState(prayer);
+  const rawSimilarRef  = useRef<any[]>([]);  // always English originals
+  const [displaySimilar, setDisplaySimilar] = useState<any[]>([]);
+  const [loadSim, setLoadSim] = useState(true);
+  const [saved, setSaved]     = useState(false);
+  const [userId, setUserId]   = useState<string | null>(null);
+
+  // Translate the main prayer whenever language changes
+  useEffect(() => {
+    if (appLanguage === "English") { setDisplayPrayer(prayer); return; }
+    translatePrayers([prayer]).then(([tp]) => setDisplayPrayer(tp)).catch(() => {});
+  }, [appLanguage, prayer, translatePrayers]);
+
+  // Fetch similar + translate
   useEffect(() => {
     getSession().then(({ data }) => {
       const uid = data.session?.user?.id ?? null;
@@ -228,15 +241,25 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
       if (uid) setSaved(isPrayerSaved(prayer.id, uid));
     });
     PrayerAPI.getSimilar(prayer.id)
-      .then((res) => {
+      .then(async (res) => {
         const raw: any[] = res.data.similar || [];
         const sorted = [...raw].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-        setSimilar(sorted);
+        rawSimilarRef.current = sorted;
+        const display = appLanguage !== "English" ? await translatePrayers(sorted) : sorted;
+        setDisplaySimilar(display);
         if (sorted.length > 0) trackCrossFaithViewed({ prayer_id: prayer.id });
       })
       .catch(console.error)
       .finally(() => setLoadSim(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prayer.id]);
+
+  // Retranslate similar when language changes
+  useEffect(() => {
+    if (!rawSimilarRef.current.length) return;
+    if (appLanguage === "English") { setDisplaySimilar(rawSimilarRef.current); return; }
+    translatePrayers(rawSimilarRef.current).then(setDisplaySimilar).catch(() => {});
+  }, [appLanguage, translatePrayers]);
 
   const handleSave = async () => {
     if (!userId) {
@@ -280,9 +303,11 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
 
   const s = useMemo(() => makeStyles(C), [C]);
 
+  // Always navigate with the original English prayer so the target screen translates fresh
   const navigateToSimilar = (item: any) => {
-    const name = item.religion_name ?? item.religions?.name ?? "";
-    navigation.push("PrayerDetail", { prayer: { ...item, religions: { name } } });
+    const orig = rawSimilarRef.current.find((p) => p.id === item.id) ?? item;
+    const name = orig.religion_name ?? orig.religions?.name ?? "";
+    navigation.push("PrayerDetail", { prayer: { ...orig, religions: { name } } });
   };
 
   return (
@@ -310,7 +335,7 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         </View>
 
         {/* Title */}
-        <Text style={s.title}>{prayer.title}</Text>
+        <Text style={s.title}>{displayPrayer.title}</Text>
 
         {/* Meta chips */}
         {prayer.tradition && (
@@ -322,7 +347,7 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
         <View style={s.divider} />
 
         {/* Prayer body */}
-        <Text style={s.body}>{prayer.body}</Text>
+        <Text style={s.body}>{displayPrayer.body}</Text>
 
         {/* Attribution — author only, strip "Author -- Prayer Title" suffix */}
         {prayer.source && (
@@ -352,22 +377,22 @@ export default function PrayerDetailScreen({ route, navigation }: any) {
 
           {loadSim && <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />}
 
-          {!loadSim && similar.length === 0 && (
+          {!loadSim && displaySimilar.length === 0 && (
             <Text style={s.crossFaithEmpty}>No cross-faith matches found.</Text>
           )}
 
-          {!loadSim && similar.length > 0 && (
+          {!loadSim && displaySimilar.length > 0 && (
             <>
-              {/* Constellation diagram */}
+              {/* Constellation diagram — use translated display items */}
               <ConstellationDiagram
-                prayer={prayer}
-                similar={similar}
+                prayer={displayPrayer}
+                similar={displaySimilar}
                 onNodePress={navigateToSimilar}
                 C={C}
               />
 
               {/* List below diagram */}
-              {similar.map((item) => {
+              {displaySimilar.map((item: any) => {
                 const name  = item.religion_name ?? item.religions?.name ?? "";
                 const color = getReligionColor(name);
                 const pct   = item.similarity != null ? Math.round(item.similarity * 100) : 0;
