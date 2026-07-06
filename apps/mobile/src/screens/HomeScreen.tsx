@@ -122,15 +122,16 @@ export default function HomeScreen({ navigation }: any) {
         return;
       }
       try {
-        // Deduplicate so we don't translate featured twice if it's also in rawList
-        const combined = rawFeat != null
-          ? Array.from(new Map([...rawList, rawFeat].map((p) => [p.id, p])).values())
-          : rawList;
-        const translated = await translatePrayers(combined);
-        const map = new Map(translated.map((p: any) => [p.id, p]));
-        setPrayers(rawList.map((p) => map.get(p.id) ?? p));
+        // Title-only for list (fast: bodies only needed in detail screen).
+        // Featured card also translates body since it shows a 3-line excerpt.
+        const [translatedList, translatedFeatArr] = await Promise.all([
+          translatePrayers(rawList, { titleOnly: true }),
+          rawFeat != null ? translatePrayers([rawFeat]) : Promise.resolve<any[]>([]),
+        ]);
+        const listMap = new Map(translatedList.map((p: any) => [p.id, p]));
+        setPrayers(rawList.map((p) => listMap.get(p.id) ?? p));
         if (rawFeat !== undefined) {
-          setFeatured(rawFeat != null ? (map.get(rawFeat.id) ?? rawFeat) : null);
+          setFeatured(rawFeat != null ? (translatedFeatArr[0] ?? rawFeat) : null);
         }
       } catch {
         setPrayers(rawList);
@@ -177,7 +178,7 @@ export default function HomeScreen({ navigation }: any) {
       const rawNew: any[] = res.data.data || [];
       rawPrayersRef.current = [...rawPrayersRef.current, ...rawNew];
       const displayNew =
-        appLanguage !== "English" ? await translatePrayers(rawNew) : rawNew;
+        appLanguage !== "English" ? await translatePrayers(rawNew, { titleOnly: true }) : rawNew;
       setPrayers((prev) => [...prev, ...displayNew]);
       setPage(nextPage);
       setHasMore(rawNew.length === 50);
@@ -307,28 +308,30 @@ export default function HomeScreen({ navigation }: any) {
                   style={[s.langMenu, { top: langMenuY, backgroundColor: C.surface, borderColor: C.line, shadowColor: C.shadow }]}
                   onStartShouldSetResponder={() => true}
                 >
-                  {APP_LANGUAGES.map((lang) => {
-                    const sel = appLanguage === lang.code;
-                    return (
-                      <TouchableOpacity
-                        key={lang.code}
-                        style={[s.langOption, sel && { backgroundColor: C.accent + "18" }]}
-                        onPress={() => {
-                          setLangMenuOpen(false);
-                          setAppLanguage(lang.code);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={s.langOptionLeft}>
-                          <Text style={[s.langDot, { color: sel ? C.accent : C.text3 }]}>⟡</Text>
-                          <Text style={[s.langOptionTxt, { color: sel ? C.accent : C.text }]}>
-                            {lang.code}
-                          </Text>
-                        </View>
-                        {sel && <Text style={[s.langCheck, { color: C.accent }]}>✓</Text>}
-                      </TouchableOpacity>
-                    );
-                  })}
+                  <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                    {APP_LANGUAGES.map((lang) => {
+                      const sel = appLanguage === lang.code;
+                      return (
+                        <TouchableOpacity
+                          key={lang.code}
+                          style={[s.langOption, sel && { backgroundColor: C.accent + "18" }]}
+                          onPress={() => {
+                            setLangMenuOpen(false);
+                            setAppLanguage(lang.code);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={s.langOptionLeft}>
+                            <Text style={[s.langDot, { color: sel ? C.accent : C.text3 }]}>⟡</Text>
+                            <Text style={[s.langOptionTxt, { color: sel ? C.accent : C.text }]}>
+                              {lang.code}
+                            </Text>
+                          </View>
+                          {sel && <Text style={[s.langCheck, { color: C.accent }]}>✓</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
               </TouchableOpacity>
             </Modal>
@@ -485,7 +488,7 @@ function makeStyles(C: ReturnType<typeof import("../lib/ThemeContext").useTheme>
       shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 1,
       shadowRadius: 20,
-      maxHeight: 420,
+      maxHeight: 218,
     },
     langOption: {
       flexDirection: "row",

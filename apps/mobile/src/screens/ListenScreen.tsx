@@ -111,7 +111,7 @@ export default function ListenScreen({ navigation }: any) {
   useEffect(() => {
     if (!rawResultsRef.current.length) return;
     if (appLanguage === "English") { setDisplayResults(rawResultsRef.current); return; }
-    translatePrayers(rawResultsRef.current).then(setDisplayResults).catch(() => {});
+    translatePrayers(rawResultsRef.current, { titleOnly: true }).then(setDisplayResults).catch(() => {});
   }, [appLanguage, translatePrayers]);
 
   const recorder      = useAudioRecorder(
@@ -375,13 +375,22 @@ export default function ListenScreen({ navigation }: any) {
         } catch { /* use whatever was accumulated from earlier chunks */ }
       }
 
-      const searchText = accumulatedTextRef.current.trim();
+      let searchText = accumulatedTextRef.current.trim();
       if (!searchText) throw new Error("No speech detected. Try holding the phone closer or speaking for longer.");
+
+      // The prayer database is embedded in English. Translating non-English speech
+      // to English before searching gives far better semantic matches.
+      if (detectedLangRef.current && detectedLangRef.current !== "english") {
+        try {
+          const { translations } = await PrayerAPI.translate([searchText], "English");
+          if (translations[0]?.trim()) searchText = translations[0];
+        } catch { /* fall back to original transcription */ }
+      }
 
       const res     = await PrayerAPI.search({ query: searchText, limit: 5 });
       const matches = res.data.results || [];
       rawResultsRef.current = matches;
-      const display = appLanguage !== "English" ? await translatePrayers(matches) : matches;
+      const display = appLanguage !== "English" ? await translatePrayers(matches, { titleOnly: true }) : matches;
       setDisplayResults(display);
       stopProcessingAnim();
       setAppState("results");

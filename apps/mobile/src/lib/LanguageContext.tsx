@@ -4,7 +4,9 @@ import {
   useContext,
   useState,
   ReactNode,
+  useEffect,
 } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PrayerAPI } from "./api";
 
 // All languages GPT-4o-mini translates near-perfectly.
@@ -36,12 +38,45 @@ export const APP_LANGUAGES = [
 // Map<language, Map<originalText, translatedText>>
 const _cache = new Map<string, Map<string, string>>();
 
+// ── Persistent cache (AsyncStorage) ──────────────────────────────────────────
+// Titles are cached between sessions so language switches are instant on re-open.
+const CACHE_KEY = "sacra_tx_v2";
+
+// Load saved translations into memory on app start (non-blocking)
+(async () => {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    if (!raw) return;
+    const saved: Record<string, Record<string, string>> = JSON.parse(raw);
+    for (const [lang, entries] of Object.entries(saved)) {
+      const existing = _cache.get(lang) ?? new Map<string, string>();
+      for (const [k, v] of Object.entries(entries)) existing.set(k, v);
+      _cache.set(lang, existing);
+    }
+  } catch {}
+})();
+
+// Write current in-memory cache back to AsyncStorage (fire-and-forget)
+function persistCache() {
+  const obj: Record<string, Record<string, string>> = {};
+  for (const [lang, map] of _cache.entries()) {
+    obj[lang] = Object.fromEntries(map);
+  }
+  AsyncStorage.setItem(CACHE_KEY, JSON.stringify(obj)).catch(() => {});
+}
+
+type TranslateOpts = {
+  // When true, only translates the `title` field — skips `body`.
+  // Use this for list views; translate body fully only in detail screens.
+  titleOnly?: boolean;
+};
+
 type LanguageContextValue = {
   appLanguage: string;
   setAppLanguage: (lang: string) => void;
-  // Translates title + body of each prayer. Returns a new array with
-  // translated fields. Uses cache — only uncached texts hit the API.
-  translatePrayers: (prayers: any[]) => Promise<any[]>;
+  // Translates title (+ optionally body) of each prayer.
+  // Returns a new array with translated fields; uses cache to avoid re-fetching.
+  translatePrayers: (prayers: any[], opts?: TranslateOpts) => Promise<any[]>;
   isTranslating: boolean;
 };
 
@@ -57,9 +92,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [isTranslating, setIsTranslating] = useState(false);
 
   const translatePrayers = useCallback(
-    async (prayers: any[]): Promise<any[]> => {
+    async (prayers: any[], opts?: TranslateOpts): Promise<any[]> => {
       if (!prayers.length || appLanguage === "English") return prayers;
 
+      const titleOnly = opts?.titleOnly ?? false;
       const langCache = _cache.get(appLanguage) ?? new Map<string, string>();
       _cache.set(appLanguage, langCache);
 
@@ -67,15 +103,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const uncached = new Set<string>();
       for (const p of prayers) {
         if (p.title && !langCache.has(p.title)) uncached.add(p.title);
-        if (p.body   && !langCache.has(p.body))  uncached.add(p.body);
+        if (!titleOnly && p.body && !langCache.has(p.body)) uncached.add(p.body);
       }
 
       if (uncached.size > 0) {
         setIsTranslating(true);
         try {
           const texts = Array.from(uncached);
-          // Split into parallel chunks of 25 so large prayer lists translate
-          // in concurrent batches instead of one slow serial request.
+          // Parallel chunks of 25 — all chunks run simultaneously
           const CHUNK = 25;
           const chunks: string[][] = [];
           for (let i = 0; i < texts.length; i += CHUNK) {
@@ -89,8 +124,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
               langCache.set(chunks[ci][i], t),
             ),
           );
+          // Persist newly cached titles for instant future sessions
+          persistCache();
         } catch {
-          // Return originals if translation fails
+          // Return originals on error; user can retry by switching language
         } finally {
           setIsTranslating(false);
         }
@@ -99,7 +136,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       return prayers.map((p) => ({
         ...p,
         title: langCache.get(p.title) ?? p.title,
-        body:  langCache.get(p.body)  ?? p.body,
+        ...(titleOnly ? {} : { body: langCache.get(p.body) ?? p.body }),
       }));
     },
     [appLanguage],

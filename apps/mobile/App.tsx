@@ -127,14 +127,16 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
+  // SVG: circle cx=11 cy=11 r=6.5 / line (16.5,16.5)→(21,21), viewBox 24×24 → scaled to 22×22
+  // Circle: top=4 left=4 w=12 h=12 r=6 bw=2
+  // Handle: vertical bar w=2 h=6 centered at (17,17) rotated 45°CW → NW→SE diagonal
   return (
     <View style={{ width: 22, height: 22 }}>
-      {/* Lens circle */}
       <View
         style={{
           position: "absolute",
-          top: 1,
-          left: 1,
+          top: 4,
+          left: 4,
           width: 12,
           height: 12,
           borderRadius: 6,
@@ -142,18 +144,15 @@ function SearchIcon({ color }: { color: string }) {
           borderColor: color,
         }}
       />
-      {/* Handle: 45° NW→SE. top:9, left:12 places the rotated top end
-          inside the border stroke at the 4-o'clock position of the lens,
-          ensuring a solid visual connection with no gap. */}
       <View
         style={{
           position: "absolute",
-          top: 9,
-          left: 12,
-          width: 3,
-          height: 9,
+          top: 14,
+          left: 16,
+          width: 2,
+          height: 6,
           backgroundColor: color,
-          borderRadius: 2,
+          borderRadius: 1,
           transform: [{ rotate: "45deg" }],
         }}
       />

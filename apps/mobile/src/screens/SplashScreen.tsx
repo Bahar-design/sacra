@@ -24,13 +24,15 @@ const ORB    = 130;
 const ORB_CX = width  / 2;
 const ORB_CY = height / 2 - 10;
 
-// 5 orbiting dots — each has its own radius, start angle, and orbital period
+// 5 orbiting "planets" — spread at comfortable distances from the central "sun"
+// Radii chosen so no planet touches the orb (radius 65px) and they scatter
+// naturally across the screen, evoking "many voices · one light"
 const DOTS = [
-  { color: "#3E6FB0", size: 15, radius: 95,  startAngle:   0, period: 5000 },
-  { color: "#E0A02E", size: 11, radius: 78,  startAngle:  72, period: 6500 },
-  { color: "#1E8A7F", size:  9, radius: 110, startAngle: 144, period: 4200 },
-  { color: "#8E5BA6", size: 13, radius: 85,  startAngle: 216, period: 7000 },
-  { color: "#C24D52", size:  8, radius: 68,  startAngle: 288, period: 5600 },
+  { color: "#3E6FB0", size: 14, radius: 130, startAngle:  20, period: 6200 },
+  { color: "#E0A02E", size:  9, radius: 152, startAngle: 100, period: 9000 },
+  { color: "#1E8A7F", size: 11, radius: 116, startAngle: 185, period: 5000 },
+  { color: "#8E5BA6", size: 13, radius: 148, startAngle: 258, period: 8000 },
+  { color: "#C24D52", size:  8, radius: 138, startAngle: 335, period: 7000 },
 ];
 
 // Precompute N keyframe positions (x, y offsets from orbit center) for one full circle.

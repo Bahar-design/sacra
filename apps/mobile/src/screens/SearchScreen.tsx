@@ -50,7 +50,7 @@ export default function SearchScreen({ navigation }: any) {
   useEffect(() => {
     if (!rawResultsRef.current.length) return;
     if (appLanguage === "English") { setDisplayResults(rawResultsRef.current); return; }
-    translatePrayers(rawResultsRef.current).then(setDisplayResults).catch(() => {});
+    translatePrayers(rawResultsRef.current, { titleOnly: true }).then(setDisplayResults).catch(() => {});
   }, [appLanguage, translatePrayers]);
 
   const doSearch = async (q = query) => {
@@ -61,7 +61,7 @@ export default function SearchScreen({ navigation }: any) {
       const res = await PrayerAPI.search({ query: q, mood: mood || undefined, occasion: occasion || undefined, limit: 20 });
       const raw: any[] = res.data.results || [];
       rawResultsRef.current = raw;
-      const display = appLanguage !== "English" ? await translatePrayers(raw) : raw;
+      const display = appLanguage !== "English" ? await translatePrayers(raw, { titleOnly: true }) : raw;
       setDisplayResults(display);
       trackSearch({ query: q, mood, occasion, resultCount: raw.length });
     } catch (e) {
