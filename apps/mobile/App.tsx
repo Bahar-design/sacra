@@ -7,12 +7,7 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import {
-  Text,
-  StatusBar,
-  View,
-  TouchableOpacity,
-} from "react-native";
+import { Text, StatusBar, View, TouchableOpacity } from "react-native";
 import { useFonts } from "expo-font";
 import {
   HankenGrotesk_400Regular,
@@ -127,9 +122,6 @@ function ListenIcon({ color }: { color: string }) {
 }
 
 function SearchIcon({ color }: { color: string }) {
-  // SVG: circle cx=11 cy=11 r=6.5 / line (16.5,16.5)→(21,21), viewBox 24×24 → scaled to 22×22
-  // Circle: top=4 left=4 w=12 h=12 r=6 bw=2
-  // Handle: vertical bar w=2 h=6 centered at (17,17) rotated 45°CW → NW→SE diagonal
   return (
     <View style={{ width: 22, height: 22 }}>
       <View
@@ -153,7 +145,7 @@ function SearchIcon({ color }: { color: string }) {
           height: 6,
           backgroundColor: color,
           borderRadius: 1,
-          transform: [{ rotate: "45deg" }],
+          transform: [{ rotate: "-45deg" }],
         }}
       />
     </View>
