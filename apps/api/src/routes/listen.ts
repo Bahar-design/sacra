@@ -6,6 +6,47 @@ import { Readable } from "stream";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Whisper's verbose_json returns full language names ("persian", "arabic"),
+// but the `language` request parameter only accepts ISO-639-1 codes ("fa", "ar").
+// Passing a full name back as a hint fails the whole request with a 400.
+const LANGUAGE_NAME_TO_ISO: Record<string, string> = {
+  english: "en", spanish: "es", arabic: "ar", persian: "fa", farsi: "fa",
+  french: "fr", german: "de", italian: "it", portuguese: "pt", hindi: "hi",
+  urdu: "ur", hebrew: "he", turkish: "tr", russian: "ru", chinese: "zh",
+  japanese: "ja", korean: "ko", sanskrit: "sa", punjabi: "pa", bengali: "bn",
+  tamil: "ta", telugu: "te", indonesian: "id", malay: "ms", greek: "el",
+  latin: "la", amharic: "am", swahili: "sw", dutch: "nl", polish: "pl",
+  vietnamese: "vi", thai: "th", gujarati: "gu", marathi: "mr", nepali: "ne",
+  sinhala: "si", burmese: "my", khmer: "km", tagalog: "tl", yoruba: "yo",
+  hausa: "ha", somali: "so", pashto: "ps", kurdish: "ku", azerbaijani: "az",
+  ukrainian: "uk", romanian: "ro", hungarian: "hu", czech: "cs", swedish: "sv",
+  norwegian: "no", danish: "da", finnish: "fi", tibetan: "bo", mongolian: "mn",
+};
+
+// Accepts a full language name or an ISO code; returns a valid ISO-639-1 code
+// or undefined (better to let Whisper auto-detect than to 400 the request).
+function toIsoLanguage(lang?: string): string | undefined {
+  if (!lang) return undefined;
+  const lower = lang.trim().toLowerCase();
+  if (LANGUAGE_NAME_TO_ISO[lower]) return LANGUAGE_NAME_TO_ISO[lower];
+  if (/^[a-z]{2}$/.test(lower)) return lower;
+  return undefined;
+}
+
+// Whisper hallucinates words during music, silence, and sustained sung notes.
+// verbose_json exposes per-segment no_speech_prob — rebuild the text from
+// segments it was actually confident contain speech.
+function textFromSegments(transcription: any): string {
+  const segments = transcription.segments;
+  if (!Array.isArray(segments) || segments.length === 0)
+    return transcription.text?.trim() || "";
+  const kept = segments
+    .filter((s: any) => (s.no_speech_prob ?? 0) < 0.6)
+    .map((s: any) => (s.text || "").trim())
+    .filter(Boolean);
+  return kept.join(" ").trim();
+}
+
 // Shared pipeline: transcribe audio then search for matching prayers
 async function transcribeAndSearch(audioBuffer: Buffer, mimeType: string) {
   // Whisper supports 90+ languages automatically — Arabic, Hebrew, Sanskrit, Latin, etc.
@@ -15,9 +56,10 @@ async function transcribeAndSearch(audioBuffer: Buffer, mimeType: string) {
     }),
     model: "whisper-1",
     response_format: "verbose_json", // verbose gives us audio duration for cost logging
+    temperature: 0, // deterministic decoding — reduces hallucination on music/noise
   })) as any;
 
-  const text = transcription.text?.trim();
+  const text = textFromSegments(transcription);
   logWhisperCost(transcription.duration || 0).catch(console.error);
   if (!text)
     throw new Error(
@@ -60,21 +102,27 @@ export async function listenRoutes(fastify: FastifyInstance) {
     const buf = Buffer.concat(chunks);
     if (buf.length === 0) return rep.status(400).send({ error: "Empty audio file" });
 
-    // Optional language hint from previous chunk detection
-    const langHint = ((req.query as any).language as string | undefined) || undefined;
+    // Optional language hint from previous chunk detection.
+    // The client sends Whisper's full language name ("arabic") — convert to
+    // the ISO-639-1 code the API requires, or drop it rather than 400.
+    const langHint = toIsoLanguage(
+      ((req.query as any).language as string | undefined) || undefined,
+    );
 
     try {
       const transcription = (await openai.audio.transcriptions.create({
-        file: await toFile(Readable.from(buf), "chunk.m4a", { type: data.mimetype }),
+        // Use the uploaded filename — OpenAI validates format by extension
+        file: await toFile(Readable.from(buf), data.filename || "chunk.m4a", { type: data.mimetype }),
         model: "whisper-1",
         response_format: "verbose_json",
-        // Grounds Whisper in sacred-text vocabulary, reducing hallucination on short clips
-        prompt: "Sacred prayer, scripture, hymn, devotion, psalm, meditation.",
+        // No prompt: an English prompt biases language detection toward English
+        // on exactly the chunks where detection matters most.
+        temperature: 0, // deterministic decoding — reduces hallucination on sung/noisy audio
         ...(langHint ? { language: langHint } : {}),
       })) as any;
       logWhisperCost(transcription.duration || 0).catch(console.error);
       return {
-        text: transcription.text?.trim() || "",
+        text: textFromSegments(transcription),
         detectedLanguage: (transcription.language as string | undefined) ?? null,
       };
     } catch (err: any) {

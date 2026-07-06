@@ -99,6 +99,11 @@ export default function ListenScreen({ navigation }: any) {
   const [detectedLang, setDetectedLang] = useState<string | null>(null);
   // Ref version so scheduleNextChunk closures always read the latest value
   const detectedLangRef = useRef<string | null>(null);
+  // Votes per detected language. A single short chunk misdetects easily
+  // (Whisper confuses Arabic/Persian on recited prayer), so we only lock the
+  // hint once the same non-English language is detected twice. Locking wrong
+  // is catastrophic: a forced wrong language makes Whisper hallucinate garbage.
+  const langVotesRef = useRef<Record<string, number>>({});
 
   const isRecordingRef = useRef(false);
   const liveWordsRef   = useRef<LiveWord[]>([]);
@@ -145,7 +150,7 @@ export default function ListenScreen({ navigation }: any) {
   const ampRef             = useRef(0.04);
   // Accumulated transcript text across all chunks — used for final search
   const accumulatedTextRef = useRef('');
-  // Timer handle for the 3.5 s chunk cycle
+  // Timer handle for the chunk cycle
   const chunkTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -279,11 +284,28 @@ export default function ListenScreen({ navigation }: any) {
     return () => clearInterval(timer);
   }, [appState]);
 
-  // ── Chunked transcription: fires every 3.5 s while recording ────────────────
+  // Record a language vote from a chunk's Whisper detection. The hint is only
+  // locked in (and sent with subsequent chunks) once the same non-English
+  // language has been detected twice — one short chunk is not trustworthy.
+  const recordLangVote = (detectedLanguage: string | null | undefined) => {
+    if (detectedLangRef.current) return; // already locked
+    if (!detectedLanguage || detectedLanguage === "english") return;
+    const votes = langVotesRef.current;
+    votes[detectedLanguage] = (votes[detectedLanguage] ?? 0) + 1;
+    if (votes[detectedLanguage] >= 2) {
+      detectedLangRef.current = detectedLanguage;
+      setDetectedLang(detectedLanguage);
+    }
+  };
+
+  // ── Chunked transcription: fires every CHUNK_MS while recording ─────────────
   // Each chunk is sent to /api/listen/transcribe (Whisper only, no search).
   // Words appear on screen as each chunk comes back.
   // On Stop the final in-progress clip is transcribed, then the full accumulated
   // text is sent to /api/search so the match uses the complete prayer context.
+  // 10 s chunks: Whisper needs the longer context to transcribe sung prayers,
+  // where sustained notes mean only a few words per chunk.
+  const CHUNK_MS = 10000;
   const scheduleNextChunk = () => {
     chunkTimerRef.current = setTimeout(async () => {
       if (!isRecordingRef.current) return;
@@ -302,10 +324,7 @@ export default function ListenScreen({ navigation }: any) {
       if (uri) {
         PrayerAPI.listenChunk(uri, detectedLangRef.current ?? undefined)
           .then(({ text, detectedLanguage }) => {
-            if (detectedLanguage && detectedLanguage !== "english") {
-              detectedLangRef.current = detectedLanguage;
-              setDetectedLang(detectedLanguage);
-            }
+            recordLangVote(detectedLanguage);
             if (text?.trim()) {
               accumulatedTextRef.current +=
                 (accumulatedTextRef.current ? " " : "") + text.trim();
@@ -316,7 +335,7 @@ export default function ListenScreen({ navigation }: any) {
           })
           .catch(() => {});
       }
-    }, 7000);
+    }, CHUNK_MS);
   };
 
   // ── Recording ────────────────────────────────────────────────────────────────
@@ -329,6 +348,9 @@ export default function ListenScreen({ navigation }: any) {
       recorder.record();
       isRecordingRef.current     = true;
       accumulatedTextRef.current = '';
+      langVotesRef.current       = {};
+      detectedLangRef.current    = null;
+      setDetectedLang(null);
       liveWordsRef.current       = [];
       rawResultsRef.current = [];
       setDisplayResults([]);
@@ -366,7 +388,7 @@ export default function ListenScreen({ navigation }: any) {
       if (uri) {
         try {
           const { text: finalText, detectedLanguage: finalLang } = await PrayerAPI.listenChunk(uri, detectedLangRef.current ?? undefined);
-          if (finalLang && finalLang !== "english") { detectedLangRef.current = finalLang; setDetectedLang(finalLang); }
+          recordLangVote(finalLang);
           if (finalText?.trim()) {
             accumulatedTextRef.current +=
               (accumulatedTextRef.current ? " " : "") + finalText.trim();
@@ -377,6 +399,15 @@ export default function ListenScreen({ navigation }: any) {
 
       let searchText = accumulatedTextRef.current.trim();
       if (!searchText) throw new Error("No speech detected. Try holding the phone closer or speaking for longer.");
+
+      // Recording is over, so votes no longer feed back into Whisper hints.
+      // If no language reached the 2-vote lock, fall back to the single best
+      // guess — it only decides whether to translate before searching.
+      if (!detectedLangRef.current) {
+        const [bestLang] = Object.entries(langVotesRef.current)
+          .sort((a, b) => b[1] - a[1])[0] ?? [];
+        if (bestLang) { detectedLangRef.current = bestLang; setDetectedLang(bestLang); }
+      }
 
       // The prayer database is embedded in English. Translating non-English speech
       // to English before searching gives far better semantic matches.
@@ -416,6 +447,7 @@ export default function ListenScreen({ navigation }: any) {
     }
     accumulatedTextRef.current = '';
     detectedLangRef.current = null;
+    langVotesRef.current = {};
     setDetectedLang(null);
     setAppState("idle");
     rawResultsRef.current = [];
