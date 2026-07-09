@@ -21,7 +21,7 @@ Hold your phone up to any spoken prayer. SACRA transcribes it, finds its meaning
 
 ## Demo
 
-> **[▶ Watch the 90-second demo](#)**
+> **[▶ Watch the 90-second demo!](https://youtube.com/shorts/E73xUY_M8bs?feature=share)**
 
 ---
 
